@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "checkJs": true,
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "target": "ES2015",
+    "types": [
+      "@zeppos/device-types"
+    ]
+  },
+  "exclude": [
+    "node_modules",
+    ".tools",
+    "dist"
+  ]
+}
+
