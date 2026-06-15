@@ -7,6 +7,7 @@ const assetDir = path.join(root, "assets", "trex2");
 const imageDir = path.join(assetDir, "images");
 const fontSourceDir = path.join(root, "design", "fonts");
 const timeImageDir = path.join(imageDir, "time");
+const metricImageDir = path.join(imageDir, "metrics", "operator");
 
 const timeFonts = {
   teko: {
@@ -24,6 +25,8 @@ const timeFonts = {
 const timeGlyphHeight = 108;
 const timeDigitWidth = 68;
 const timeColonWidth = 24;
+const metricGlyphHeight = 34;
+const metricDigitWidth = 22;
 
 async function renderGlyph(character, config, fontPath, width) {
   const text = await sharp({
@@ -87,6 +90,31 @@ async function generateTimeFonts() {
       path.join(outputDir, "colon.png"),
       await renderGlyph(":", config, fontPath, timeColonWidth),
     );
+  }
+}
+
+async function generateMetricFont() {
+  await fs.mkdir(metricImageDir, { recursive: true });
+
+  for (let digit = 0; digit <= 9; digit += 1) {
+    const image = await sharp({
+      text: {
+        text: `<span foreground="#e5e5e5">${digit}</span>`,
+        font: "Arial Narrow",
+        width: metricDigitWidth,
+        height: metricGlyphHeight,
+        align: "center",
+        rgba: true,
+      },
+    })
+      .resize(metricDigitWidth, metricGlyphHeight, {
+        fit: "contain",
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .png()
+      .toBuffer();
+
+    await fs.writeFile(path.join(metricImageDir, `${digit}.png`), image);
   }
 }
 
@@ -163,17 +191,6 @@ const svg = `
       <rect x="82" y="354" width="7" height="26"/>
     </g>
 
-    <!-- compass -->
-    <circle cx="227" cy="370" r="38" fill="#020602" stroke="#4c9a3d" stroke-width="1.3"/>
-    <circle cx="227" cy="370" r="31" fill="none" stroke="#315f2e" stroke-width="1"/>
-    <g stroke="#76d35d" stroke-width="1">
-      <path d="M227 333 V339 M227 401 V407 M190 370 H196 M258 370 H264"/>
-      <path d="M201 344 L205 348 M249 392 L253 396 M253 344 L249 348 M205 392 L201 396"/>
-    </g>
-    <path d="M227 342 L239 378 L227 372 L215 378 Z" fill="#76d35d"/>
-    <path d="M227 398 L219 374 L227 378 L235 374 Z" fill="#183818"/>
-    <path d="M227 342 L230 351 L224 351 Z" fill="#ff9f2e"/>
-
     <!-- operator separators and sync signal -->
     <path d="M318 348 H400" stroke="#3f6338"/>
     <g fill="#76d35d">
@@ -187,6 +204,7 @@ const svg = `
 
 await fs.mkdir(imageDir, { recursive: true });
 await generateTimeFonts();
+await generateMetricFont();
 await sharp({
   create: {
     width: 138,
@@ -198,23 +216,31 @@ await sharp({
   .png()
   .toFile(path.join(imageDir, "touch-target.png"));
 
-const compassNeedle = `
+const compassDial = `
 <svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">
+  <circle cx="40" cy="40" r="38" fill="#020602" stroke="#4c9a3d" stroke-width="1.3"/>
   <circle cx="40" cy="40" r="37" fill="none" stroke="#315f2e" stroke-width="1"/>
   <g stroke="#76d35d" stroke-width="1">
     <path d="M40 3V10 M40 70V77 M3 40H10 M70 40H77"/>
     <path d="M14 14L19 19 M61 61L66 66 M66 14L61 19 M19 61L14 66"/>
   </g>
+</svg>`;
+
+const compassArrow = `
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">
   <path d="M40 7L51 45L40 40L29 45Z" fill="#76d35d"/>
   <path d="M40 73L32 41L40 46L48 41Z" fill="#173817"/>
   <path d="M40 7L44 20H36Z" fill="#ff9f2e"/>
   <circle cx="40" cy="40" r="3" fill="#d8e2d5"/>
 </svg>`;
 
-await sharp(Buffer.from(compassNeedle))
+await sharp(Buffer.from(compassDial))
   .png()
-  .toFile(path.join(imageDir, "compass-needle.png"));
-await sharp(Buffer.from(svg)).png().toFile(path.join(imageDir, "tactical-bg-v2.png"));
+  .toFile(path.join(imageDir, "compass-dial.png"));
+await sharp(Buffer.from(compassArrow))
+  .png()
+  .toFile(path.join(imageDir, "compass-arrow.png"));
+await sharp(Buffer.from(svg)).png().toFile(path.join(imageDir, "tactical-bg-v3.png"));
 
 const previewOverlay = `
 <svg xmlns="http://www.w3.org/2000/svg" width="454" height="454">
@@ -247,9 +273,11 @@ const previewOverlay = `
   </g>
 </svg>`;
 
-await sharp(path.join(imageDir, "tactical-bg-v2.png"))
+await sharp(path.join(imageDir, "tactical-bg-v3.png"))
   .composite([
     { input: Buffer.from(previewOverlay) },
+    { input: path.join(imageDir, "compass-dial.png"), left: 187, top: 330 },
+    { input: path.join(imageDir, "compass-arrow.png"), left: 187, top: 330 },
     { input: path.join(timeImageDir, "teko", "1.png"), left: 79, top: 153 },
     { input: path.join(timeImageDir, "teko", "4.png"), left: 147, top: 153 },
     { input: path.join(timeImageDir, "teko", "colon.png"), left: 215, top: 153 },
@@ -258,5 +286,10 @@ await sharp(path.join(imageDir, "tactical-bg-v2.png"))
   ])
   .png()
   .toFile(path.join(assetDir, "preview-v2.png"));
+
+await fs.copyFile(
+  path.join(assetDir, "preview-v2.png"),
+  path.join(assetDir, "preview.png"),
+);
 
 console.log("Generated tactical background, preview, and Teko/Black Ops time glyphs");
