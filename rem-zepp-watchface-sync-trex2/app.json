@@ -1,0 +1,64 @@
+{
+  "configVersion": "v3",
+  "app": {
+    "appId": 306967170,
+    "appName": "REM WF Sync Proof",
+    "appType": "watchface",
+    "version": {
+      "code": 1,
+      "name": "0.1.0"
+    },
+    "icon": "icon.png",
+    "cover": [
+      "preview.png"
+    ],
+    "vender": "Corvo",
+    "description": "Watchdrip-style REM watchface sync proof for Amazfit T-Rex 2"
+  },
+  "permissions": [
+    "data:os.device.info",
+    "device:os.ble",
+    "gps"
+  ],
+  "runtime": {
+    "apiVersion": {
+      "compatible": "1.0.0",
+      "target": "1.0.1",
+      "minVersion": "1.0.0"
+    }
+  },
+  "targets": {
+    "trex2": {
+      "module": {
+        "watchface": {
+          "path": "watchface/trex2/index",
+          "main": 1,
+          "editable": 0,
+          "lockscreen": 1,
+          "hightCost": 0
+        },
+        "app-side": {
+          "path": "app-side/index"
+        }
+      },
+      "platforms": [
+        {
+          "name": "trex2-cn",
+          "deviceSource": 418
+        },
+        {
+          "name": "trex2-global",
+          "deviceSource": 419
+        }
+      ],
+      "designWidth": 454
+    }
+  },
+  "i18n": {
+    "en-US": {
+      "name": "REM WF Sync Proof"
+    }
+  },
+  "defaultLanguage": "en-US",
+  "debug": true
+}

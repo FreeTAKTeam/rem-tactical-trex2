@@ -1,0 +1,11 @@
+{
+  "name": "rem-sync-face-read-proof",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "zeus": "node scripts/run-zeus.cjs",
+    "build": "node scripts/run-zeus.cjs build -t \"Amazfit T-Rex 2\"",
+    "preview": "node scripts/run-zeus.cjs preview -t \"Amazfit T-Rex 2\""
+  }
+}

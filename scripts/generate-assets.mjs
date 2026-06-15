@@ -172,13 +172,13 @@ const svg = `
     </g>
 
     <!-- heart -->
-    <path d="M52 110 C45 100 29 104 29 116 C29 128 52 142 52 142 C52 142 75 128 75 116 C75 104 59 100 52 110Z"
+    <path d="M52 115 C47 108 35 110 35 119 C35 129 52 139 52 139 C52 139 69 129 69 119 C69 110 57 108 52 115Z"
       fill="#76d35d" opacity=".9"/>
 
     <!-- battery -->
-    <rect x="393" y="105" width="19" height="34" rx="2" fill="none" stroke="#76d35d" stroke-width="2"/>
-    <rect x="398" y="110" width="9" height="24" fill="#76d35d" opacity=".78"/>
-    <rect x="398" y="100" width="9" height="5" fill="#76d35d"/>
+    <rect x="397" y="108" width="15" height="27" rx="2" fill="none" stroke="#76d35d" stroke-width="2"/>
+    <rect x="401" y="113" width="7" height="18" fill="#76d35d" opacity=".78"/>
+    <rect x="401" y="104" width="7" height="4" fill="#76d35d"/>
 
     <!-- GPS pin and signal bars -->
     <path d="M52 318 C52 303 75 303 75 318 C75 331 63.5 343 63.5 343 C63.5 343 52 331 52 318Z"
@@ -263,13 +263,12 @@ const previewOverlay = `
     <text x="116" y="365" class="white center" font-size="21">FIX</text>
     <text x="227" y="301" class="green center" font-size="14">HEADING</text>
     <text x="227" y="331" class="white center" font-size="27">NW 328°</text>
-    <text x="358" y="306" class="green center" font-size="14">OPERATOR</text>
+    <text x="358" y="306" class="green center" font-size="14">C0rv0</text>
     <text x="358" y="337" class="white center" font-size="23">ACTIVE</text>
     <text x="358" y="363" class="green center" font-size="12">TEAM</text>
-    <text x="358" y="387" class="white center" font-size="21">ALPHA</text>
+    <text x="358" y="387" class="white center" font-size="21">Yellow</text>
     <text x="174" y="425" class="green center" font-size="12">LAST SYNC</text>
     <text x="264" y="425" class="white center" font-size="14">14:30 UTC</text>
-    <text x="333" y="425" class="dim center" font-size="11">2m AGO</text>
   </g>
 </svg>`;
 

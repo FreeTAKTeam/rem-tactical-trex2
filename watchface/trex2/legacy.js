@@ -1,3 +1,7 @@
+import { getGlobal } from "../../shared/global";
+import { REM_MESSAGE_TYPES, REM_REQUEST_METHOD } from "../../common/messageTypes";
+import { remConfig } from "../../common/remConfig";
+
 const COLOR = {
   background: 0x030603,
   green: 0x76d35d,
@@ -35,9 +39,28 @@ const METRIC_DIGITS = [
   "images/metrics/operator/9.png",
 ];
 
+const REM_POLL_INTERVAL_MS = 10000;
+const REM_REQUEST_TIMEOUT_MS = 5000;
+const REM_STATUS_REQUEST = "REM_STATUS_REQUEST";
+
+let globalNS;
 let compass;
 let compassArrow;
 let headingText;
+let connectionText;
+let operatorStatusText;
+let teamText;
+let lastSyncText;
+let eventsText;
+let priorityText;
+let bridgeDebugText;
+let messageBuilder;
+let remRequestTimer = null;
+let remBridgeActive = false;
+let latestRemStatus = null;
+let remRequestCount = 0;
+let remRequestInFlight = false;
+let remWatchdogTimer = null;
 
 function textWidget(x, y, w, h, text, color, size, align) {
   return hmUI.createWidget(hmUI.widget.TEXT, {
@@ -55,11 +78,19 @@ function textWidget(x, y, w, h, text, color, size, align) {
   });
 }
 
-function setText(widget, text) {
-  widget &&
-    widget.setProperty(hmUI.prop.MORE, {
-      text,
-    });
+function setText(widget, text, color) {
+  if (!widget) {
+    return;
+  }
+
+  const props = {
+    text: String(text === undefined || text === null ? "" : text),
+  };
+  if (color !== undefined) {
+    props.color = color;
+  }
+
+  widget.setProperty(hmUI.prop.MORE, props);
 }
 
 function normalizeAngle(directionAngle) {
@@ -139,6 +170,223 @@ function stopCompass() {
   compass && compass.stop();
 }
 
+function remStatusColor(status) {
+  const connection = status && status.connection ? String(status.connection) : "";
+  const priority = status && status.priority ? String(status.priority) : "";
+  const alert = status && status.alert ? String(status.alert) : "";
+  if (
+    connection === "ERROR" ||
+    priority === "EMERGENCY" ||
+    alert === "ALERT" ||
+    alert === "EMERGENCY"
+  ) {
+    return COLOR.red;
+  }
+
+  if (connection === "STALE" || connection === "OFFLINE") {
+    return COLOR.orange;
+  }
+
+  return COLOR.green;
+}
+
+function fallbackRemStatus(connection) {
+  const previous = latestRemStatus || {};
+  return {
+    connection: connection || previous.connection || "CONNECTED",
+    operatorStatus: previous.operatorStatus || "ACTIVE",
+    operatorEam: previous.operatorEam || previous.operatorStatus || "ACTIVE",
+    team: previous.team || "Yellow",
+    teamStatus: previous.teamStatus || previous.team || "Yellow",
+    lastSyncAge: previous.lastSyncAge || "14:30 UTC",
+    activeEvents: previous.activeEvents || 0,
+    priority: previous.priority || "NORMAL",
+    alert: previous.alert || "NORMAL",
+  };
+}
+
+function renderRemStatus(status) {
+  const rendered = status || fallbackRemStatus();
+  latestRemStatus = rendered;
+
+  const color = remStatusColor(rendered);
+  const operatorState =
+    rendered.operatorEam || rendered.operatorStatus || "UNKNOWN";
+  const teamState = rendered.teamStatus || rendered.team || "UNKNOWN";
+  const activeEvents = Number(rendered.activeEvents || 0);
+
+  setText(connectionText, rendered.connection || "CONNECTED", color);
+  setText(operatorStatusText, operatorState);
+  setText(teamText, teamState);
+  setText(lastSyncText, rendered.lastSyncAge || "--");
+  setText(eventsText, `EV ${activeEvents}`);
+  setText(priorityText, rendered.priority || rendered.alert || "NORMAL", color);
+}
+
+function setBridgeDebug(text, color) {
+  setText(bridgeDebugText, text, color || COLOR.orange);
+}
+
+function clearRemWatchdog() {
+  if (remWatchdogTimer !== null) {
+    const timers = globalNS || getGlobal();
+    timers.clearTimeout(remWatchdogTimer);
+    remWatchdogTimer = null;
+  }
+}
+
+function getMessageBuilder() {
+  if (messageBuilder) {
+    return messageBuilder;
+  }
+
+  try {
+    messageBuilder = getApp()._options.globalData.messageBuilder;
+  } catch (error) {
+    messageBuilder = null;
+  }
+
+  return messageBuilder;
+}
+
+function initRemBridge() {
+  const builder = getMessageBuilder();
+  if (!builder || remBridgeActive) {
+    return builder;
+  }
+
+  try {
+    builder.connect();
+    remBridgeActive = true;
+    setBridgeDebug("REM CONNECT", COLOR.orange);
+  } catch (error) {
+    remBridgeActive = false;
+    setBridgeDebug("REM FAIL", COLOR.red);
+  }
+
+  return builder;
+}
+
+function dropRemBridge() {
+  const builder = getMessageBuilder();
+  if (!builder || !remBridgeActive) {
+    return;
+  }
+
+  try {
+    builder.disConnect();
+  } catch (error) {
+  }
+  remBridgeActive = false;
+}
+
+function requestRemStatus() {
+  if (
+    typeof hmSetting !== "undefined" &&
+    hmSetting.getScreenType() !== hmSetting.screen_type.WATCHFACE
+  ) {
+    return;
+  }
+
+  const builder = initRemBridge();
+  if (!builder || typeof builder.request !== "function") {
+    setBridgeDebug("REM NOREQ", COLOR.red);
+    renderRemStatus(fallbackRemStatus("OFFLINE"));
+    return;
+  }
+
+  if (remRequestInFlight) {
+    setBridgeDebug(`REM WAIT ${remRequestCount}`, COLOR.orange);
+    return;
+  }
+
+  remRequestCount += 1;
+  remRequestInFlight = true;
+  setBridgeDebug(`REM REQ ${remRequestCount}`, COLOR.orange);
+
+  const requestCount = remRequestCount;
+  const timers = globalNS || getGlobal();
+  clearRemWatchdog();
+  remWatchdogTimer = timers.setTimeout(function () {
+    if (!remRequestInFlight || requestCount !== remRequestCount) {
+      return;
+    }
+
+    remRequestInFlight = false;
+    remWatchdogTimer = null;
+    setBridgeDebug("REM TIMEOUT", COLOR.red);
+    renderRemStatus(fallbackRemStatus("OFFLINE"));
+  }, REM_REQUEST_TIMEOUT_MS);
+
+  builder
+    .request(
+      {
+        type: REM_STATUS_REQUEST,
+        method: REM_REQUEST_METHOD,
+        params: {
+          config: remConfig,
+        },
+      },
+      { timeout: REM_REQUEST_TIMEOUT_MS },
+    )
+    .then(function (response) {
+      if (requestCount !== remRequestCount) {
+        return;
+      }
+
+      remRequestInFlight = false;
+      clearRemWatchdog();
+      if (response && response.type === REM_MESSAGE_TYPES.error) {
+        setBridgeDebug("REM ERROR", COLOR.red);
+        renderRemStatus(fallbackRemStatus("ERROR"));
+        return;
+      }
+
+      const status =
+        (response && response.data) ||
+        (response && response.result) ||
+        response ||
+        fallbackRemStatus();
+      setBridgeDebug(`REM OK EV${Number(status.activeEvents || 0)}`, COLOR.green);
+      renderRemStatus(status);
+    })
+    .catch(function () {
+      if (requestCount !== remRequestCount) {
+        return;
+      }
+
+      remRequestInFlight = false;
+      clearRemWatchdog();
+      setBridgeDebug("REM TIMEOUT", COLOR.red);
+      renderRemStatus(fallbackRemStatus("OFFLINE"));
+    });
+}
+
+function startRemUpdates() {
+  renderRemStatus(latestRemStatus || fallbackRemStatus());
+  requestRemStatus();
+
+  if (remRequestTimer !== null) {
+    return;
+  }
+
+  const timers = globalNS || getGlobal();
+  remRequestTimer = timers.setInterval(function () {
+    requestRemStatus();
+  }, REM_POLL_INTERVAL_MS);
+}
+
+function stopRemUpdates() {
+  if (remRequestTimer !== null) {
+    const timers = globalNS || getGlobal();
+    timers.clearInterval(remRequestTimer);
+    remRequestTimer = null;
+  }
+  remRequestInFlight = false;
+  clearRemWatchdog();
+  dropRemBridge();
+}
+
 function launchCompassApp() {
   if (typeof hmApp === "undefined" || typeof hmApp.startApp !== "function") {
     return;
@@ -195,7 +443,7 @@ function buildNormal() {
   });
 
   textWidget(147, 10, 160, 38, "REM", COLOR.green, 31);
-  textWidget(126, 43, 202, 23, "CONNECTED", COLOR.green, 15);
+  connectionText = textWidget(126, 43, 202, 23, "CONNECTED", COLOR.green, 15);
 
   textWidget(52, 75, 145, 22, "HEART RATE", COLOR.green, 15);
   hmUI.createWidget(hmUI.widget.TEXT_IMG, {
@@ -224,13 +472,13 @@ function buildNormal() {
   textWidget(364, 107, 32, 28, "%", COLOR.white, 23);
 
   buildClock(hmUI.show_level.ONLY_NORMAL);
+  bridgeDebugText = textWidget(117, 263, 220, 18, "REM INIT", COLOR.orange, 13);
 
   textWidget(43, 291, 120, 20, "GPS", COLOR.green, 14);
   textWidget(62, 314, 100, 32, "3D", COLOR.white, 24);
   textWidget(67, 344, 92, 26, "FIX", COLOR.white, 20);
 
   textWidget(167, 286, 120, 20, "HEADING", COLOR.green, 14);
-  headingText = textWidget(164, 306, 126, 35, "--\u00b0", COLOR.white, 28);
   hmUI.createWidget(hmUI.widget.IMG, {
     x: 187,
     y: 330,
@@ -252,6 +500,7 @@ function buildNormal() {
     angle: 0,
     show_level: hmUI.show_level.ONLY_NORMAL,
   });
+  headingText = textWidget(164, 306, 126, 35, "--\u00b0", COLOR.white, 28);
 
   hmUI.createWidget(hmUI.widget.BUTTON, {
     x: 158,
@@ -265,14 +514,15 @@ function buildNormal() {
     show_level: hmUI.show_level.ONLY_NORMAL,
   });
 
-  textWidget(302, 291, 112, 20, "OPERATOR", COLOR.green, 14);
-  textWidget(298, 314, 122, 29, "ACTIVE", COLOR.white, 23);
+  textWidget(302, 291, 112, 20, "C0rv0", COLOR.green, 14);
+  operatorStatusText = textWidget(298, 314, 122, 29, "ACTIVE", COLOR.white, 23);
   textWidget(305, 347, 108, 18, "TEAM", COLOR.green, 12);
-  textWidget(299, 364, 120, 27, "ALPHA", COLOR.white, 21);
+  teamText = textWidget(299, 364, 120, 27, "Yellow", COLOR.white, 21);
 
   textWidget(129, 412, 91, 18, "LAST SYNC", COLOR.green, 12);
-  textWidget(218, 410, 92, 20, "14:30 UTC", COLOR.white, 14);
-  textWidget(309, 412, 51, 18, "2m AGO", COLOR.textDim, 11);
+  lastSyncText = textWidget(218, 410, 92, 20, "14:30 UTC", COLOR.white, 14);
+  eventsText = textWidget(309, 410, 52, 20, "EV 0", COLOR.white, 14);
+  priorityText = textWidget(361, 410, 68, 20, "NORMAL", COLOR.green, 13);
 }
 
 function buildAod() {
@@ -289,16 +539,20 @@ function buildAod() {
 
 WatchFace({
   init_view() {
+    globalNS = getGlobal();
     buildNormal();
     buildAod();
     startCompass();
+    startRemUpdates();
 
     hmUI.createWidget(hmUI.widget.WIDGET_DELEGATE, {
       resume_call: function () {
         startCompass();
+        startRemUpdates();
       },
       pause_call: function () {
         stopCompass();
+        stopRemUpdates();
       },
     });
   },
@@ -309,5 +563,6 @@ WatchFace({
 
   onDestroy() {
     stopCompass();
+    stopRemUpdates();
   },
 });
