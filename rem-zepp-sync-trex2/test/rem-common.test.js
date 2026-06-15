@@ -56,6 +56,28 @@ test("compactRemStatus maps northbound response to watch status", () => {
     alert: "NORMAL",
     waypoint: "WP-23 / 1.2 km / 328\u00b0",
     bearing: 328,
+    lastEvent: null,
+  });
+});
+
+test("compactRemStatus maps latest event for the watchface panel", () => {
+  const compact = compactRemStatus({
+    ...apiResponse,
+    latest_event: {
+      severity: "URGENT",
+      category: "RESPONSE",
+      title: "help coming",
+      source: "Poco",
+      time: "9:09 PM",
+    },
+  });
+
+  assert.deepEqual(compact.lastEvent, {
+    severity: "URGENT",
+    category: "RESPONSE",
+    title: "help coming",
+    source: "Poco",
+    time: "9:09 PM",
   });
 });
 
@@ -86,6 +108,8 @@ test("mock statuses expose visibly distinct watchface values", () => {
   assert.equal(mockCompactStatus("stale").activeEvents, 1);
   assert.equal(mockCompactStatus("high").activeEvents, 7);
   assert.equal(mockCompactStatus("high").priority, "HIGH");
+  assert.equal(mockCompactStatus("high").lastEvent.title, "help coming");
   assert.equal(mockCompactStatus("emergency").activeEvents, 5);
   assert.equal(mockCompactStatus("emergency").priority, "EMERGENCY");
+  assert.equal(mockCompactStatus("no-events").lastEvent, null);
 });

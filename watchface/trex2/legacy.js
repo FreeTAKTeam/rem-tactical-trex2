@@ -8,6 +8,8 @@ const COLOR = {
   greenBright: 0x8be85f,
   white: 0xe5e5e5,
   textDim: 0x8fa08c,
+  cyan: 0x6ff5e7,
+  blue: 0x72b8ff,
   orange: 0xff9f2e,
   red: 0xff4a32,
 };
@@ -53,6 +55,11 @@ let teamText;
 let lastSyncText;
 let eventsText;
 let priorityText;
+let eventCategoryText;
+let eventTitleTopText;
+let eventTitleBottomText;
+let eventMetaText;
+let eventSeverityRail;
 let bridgeDebugText;
 let messageBuilder;
 let remRequestTimer = null;
@@ -190,6 +197,63 @@ function remStatusColor(status) {
   return COLOR.green;
 }
 
+function eventSeverityColor(event) {
+  const severity = event && event.severity ? String(event.severity).toUpperCase() : "";
+  if (severity === "EMERGENCY" || severity === "ALERT" || severity === "RED") {
+    return COLOR.red;
+  }
+
+  if (severity === "URGENT" || severity === "HIGH" || severity === "YELLOW") {
+    return COLOR.orange;
+  }
+
+  return COLOR.cyan;
+}
+
+function normalizeEvent(status) {
+  const previous = latestRemStatus || {};
+  const previousEvent = previous.lastEvent || {};
+  const event = (status && status.lastEvent) || previousEvent || {};
+
+  return {
+    severity: event.severity || "SAFETY",
+    category: event.category || "POSITION / MOVE",
+    title: event.title || "STRANDED / STUCK",
+    source: event.source || "ZAPPA",
+    time: event.time || "7:16 PM",
+  };
+}
+
+function compactText(value, fallback, maxLength) {
+  const text = String(value || fallback || "").toUpperCase();
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  return text.slice(0, maxLength);
+}
+
+function renderLastEvent(status) {
+  const event = normalizeEvent(status);
+  const title = String(event.title || "").toUpperCase();
+  const titleParts = title.split("/");
+  const topTitle = compactText(titleParts[0], "EVENT", 10);
+  const bottomTitle = titleParts.length > 1
+    ? compactText(`/ ${titleParts.slice(1).join("/").trim()}`, "", 10)
+    : "";
+  const meta = `${compactText(event.source, "SRC", 6)} ${String(event.time || "--").toUpperCase()}`;
+  const severityColor = eventSeverityColor(event);
+
+  eventSeverityRail &&
+    eventSeverityRail.setProperty(hmUI.prop.MORE, {
+      color: severityColor,
+    });
+  setText(eventCategoryText, compactText(event.category, "EVENT", 15), COLOR.blue);
+  setText(eventTitleTopText, topTitle, COLOR.white);
+  setText(eventTitleBottomText, bottomTitle, COLOR.white);
+  setText(eventMetaText, meta, COLOR.textDim);
+}
+
 function fallbackRemStatus(connection) {
   const previous = latestRemStatus || {};
   return {
@@ -202,6 +266,7 @@ function fallbackRemStatus(connection) {
     activeEvents: previous.activeEvents || 0,
     priority: previous.priority || "NORMAL",
     alert: previous.alert || "NORMAL",
+    lastEvent: normalizeEvent(previous),
   };
 }
 
@@ -221,6 +286,7 @@ function renderRemStatus(status) {
   setText(lastSyncText, rendered.lastSyncAge || "--");
   setText(eventsText, `EV ${activeEvents}`);
   setText(priorityText, rendered.priority || rendered.alert || "NORMAL", color);
+  renderLastEvent(rendered);
 }
 
 function setBridgeDebug(text, color) {
@@ -474,9 +540,27 @@ function buildNormal() {
   buildClock(hmUI.show_level.ONLY_NORMAL);
   bridgeDebugText = textWidget(117, 263, 220, 18, "REM INIT", COLOR.orange, 13);
 
-  textWidget(43, 291, 120, 20, "GPS", COLOR.green, 14);
-  textWidget(62, 314, 100, 32, "3D", COLOR.white, 24);
-  textWidget(67, 344, 92, 26, "FIX", COLOR.white, 20);
+  eventSeverityRail = hmUI.createWidget(hmUI.widget.FILL_RECT, {
+    x: 48,
+    y: 294,
+    w: 4,
+    h: 84,
+    color: COLOR.cyan,
+    show_level: hmUI.show_level.ONLY_NORMAL,
+  });
+  eventCategoryText = textWidget(
+    55,
+    293,
+    94,
+    14,
+    "POSITION / MOVE",
+    COLOR.blue,
+    9,
+    hmUI.align.LEFT,
+  );
+  eventTitleTopText = textWidget(55, 314, 94, 18, "STRANDED", COLOR.white, 14);
+  eventTitleBottomText = textWidget(55, 332, 94, 18, "/ STUCK", COLOR.white, 13);
+  eventMetaText = textWidget(55, 362, 94, 14, "ZAPPA 7:16 PM", COLOR.textDim, 9);
 
   textWidget(167, 286, 120, 20, "HEADING", COLOR.green, 14);
   hmUI.createWidget(hmUI.widget.IMG, {

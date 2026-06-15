@@ -39,6 +39,7 @@ export function validateRemWatchStatus(response) {
 export function compactRemStatus(apiResponse) {
   const status = validateRemWatchStatus(apiResponse);
   const waypoint = status.waypoint || {};
+  const latestEvent = status.latest_event || status.last_event || null;
   const waypointLabel =
     waypoint.id && Number.isFinite(Number(waypoint.distance_m))
       ? `${waypoint.id} / ${formatDistanceMeters(Number(waypoint.distance_m))} / ${
@@ -63,6 +64,21 @@ export function compactRemStatus(apiResponse) {
     bearing: Number.isFinite(Number(waypoint.bearing_deg))
       ? Math.round(Number(waypoint.bearing_deg))
       : null,
+    lastEvent: compactLastEvent(latestEvent, status),
+  };
+}
+
+function compactLastEvent(event, status) {
+  if (!event || typeof event !== "object" || !event.title) {
+    return null;
+  }
+
+  return {
+    severity: event.severity || event.priority || status.highest_priority || "NORMAL",
+    category: event.category || event.type || "",
+    title: event.title,
+    source: event.source || event.operator || status.operator_name || "",
+    time: event.time || event.time_label || "",
   };
 }
 
@@ -80,5 +96,6 @@ export function makeErrorStatus(kind, lastStatus) {
     alert: kind === "ERROR" ? "ERROR" : lastStatus?.alert || "NORMAL",
     waypoint: lastStatus?.waypoint || "",
     bearing: lastStatus?.bearing ?? null,
+    lastEvent: lastStatus?.lastEvent || null,
   };
 }

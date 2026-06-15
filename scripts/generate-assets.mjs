@@ -180,17 +180,6 @@ const svg = `
     <rect x="401" y="113" width="7" height="18" fill="#76d35d" opacity=".78"/>
     <rect x="401" y="104" width="7" height="4" fill="#76d35d"/>
 
-    <!-- GPS pin and signal bars -->
-    <path d="M52 318 C52 303 75 303 75 318 C75 331 63.5 343 63.5 343 C63.5 343 52 331 52 318Z"
-      fill="#76d35d"/>
-    <circle cx="63.5" cy="317" r="4.5" fill="#071007"/>
-    <g fill="#76d35d">
-      <rect x="49" y="372" width="7" height="8"/>
-      <rect x="60" y="367" width="7" height="13"/>
-      <rect x="71" y="361" width="7" height="19"/>
-      <rect x="82" y="354" width="7" height="26"/>
-    </g>
-
     <!-- operator separators and sync signal -->
     <path d="M318 348 H400" stroke="#3f6338"/>
     <g fill="#76d35d">
@@ -258,9 +247,11 @@ const previewOverlay = `
     <text x="127" y="145" class="dim center" font-size="13">BPM</text>
     <text x="333" y="91" class="green center" font-size="15">BATTERY</text>
     <text x="330" y="130" class="white center" font-size="40">78%</text>
-    <text x="101" y="306" class="green center" font-size="14">GPS</text>
-    <text x="116" y="337" class="white center" font-size="25">3D</text>
-    <text x="116" y="365" class="white center" font-size="21">FIX</text>
+    <rect x="48" y="294" width="4" height="84" fill="#6ff5e7"/>
+    <text x="55" y="305" class="green start" font-size="9" fill="#72b8ff">POSITION / MOVE</text>
+    <text x="55" y="328" class="white start" font-size="14">STRANDED</text>
+    <text x="55" y="346" class="white start" font-size="13">/ STUCK</text>
+    <text x="55" y="372" class="dim start" font-size="9">ZAPPA 7:16 PM</text>
     <text x="227" y="301" class="green center" font-size="14">HEADING</text>
     <text x="227" y="331" class="white center" font-size="27">NW 328°</text>
     <text x="358" y="306" class="green center" font-size="14">C0rv0</text>

@@ -8,8 +8,8 @@ const appJs = fs.readFileSync("app.js", "utf8");
 const messageTypes = fs.readFileSync("common/messageTypes.js", "utf8");
 
 const checks = [
-  ["app version is 1.3.19", app.app.version.name === "1.3.19"],
-  ["app version code is 37", app.app.version.code === 37],
+  ["app version is 1.3.21", app.app.version.name === "1.3.21"],
+  ["app version code is 39", app.app.version.code === 39],
   ["app targets API 1.0.1", app.runtime.apiVersion.target === "1.0.1"],
   [
     "active module is legacy",
@@ -71,6 +71,15 @@ const checks = [
     !legacy.includes("2m AGO") && legacy.includes("rendered.lastSyncAge"),
   ],
   [
+    "gps block is replaced by last-event panel",
+    legacy.includes("renderLastEvent") &&
+      legacy.includes("eventSeverityRail") &&
+      legacy.includes('"POSITION / MOVE"') &&
+      !legacy.includes('"GPS"') &&
+      !legacy.includes('"3D"') &&
+      !legacy.includes('"FIX"'),
+  ],
+  [
     "watchface uses REM Sync companion bridge",
     appJs.includes("new MessageBuilder({ appId: REM_SYNC_APP_ID })") &&
       messageTypes.includes("306967169") &&
@@ -103,6 +112,12 @@ checks.push(
   [
     "preview removes last update age wording",
     !assetGenerator.includes("2m AGO"),
+  ],
+  [
+    "generated background omits old gps marker and signal icons",
+    !assetGenerator.includes("GPS pin and signal bars") &&
+      !assetGenerator.includes("M52 318 C52 303") &&
+      !assetGenerator.includes('rect x="49" y="372"'),
   ],
 );
 
