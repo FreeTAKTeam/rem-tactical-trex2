@@ -5,6 +5,7 @@ import { formatDistanceMeters, formatLastSync } from "../common/formatters.js";
 import { redactSensitive } from "../common/logging.js";
 import { compactRemStatus, validateRemWatchStatus } from "../common/remModel.js";
 import { mockCompactStatus } from "../common/mockRem.js";
+import { fetchRemWatchStatus } from "../common/remClient.js";
 
 const apiResponse = {
   type: "rem.watch.status",
@@ -55,9 +56,54 @@ test("compactRemStatus maps northbound response to watch status", () => {
     priority: "HIGH",
     alert: "NORMAL",
     waypoint: "WP-23 / 1.2 km / 328\u00b0",
+    position: "34.05220, -118.24370",
     bearing: 328,
     lastEvent: null,
+    updatedAt: 1760000000000,
   });
+});
+
+test("REM Sync defaults to the Android loopback watch server without mock mode", async () => {
+  const { remConfig, normalizeRemConfig } = await import("../common/remConfig.js");
+
+  assert.equal(remConfig.baseUrl, "http://localhost:29863");
+  assert.equal(remConfig.mockMode, false);
+  assert.equal(normalizeRemConfig().mockMode, false);
+  assert.equal(normalizeRemConfig({ mockMode: true }).mockMode, true);
+});
+
+test("fetchRemWatchStatus uses Zepp side-service fetch request shape", async () => {
+  const calls = [];
+  const status = await fetchRemWatchStatus(
+    {
+      baseUrl: "http://localhost:29863",
+      mockMode: false,
+      timeoutMs: 5000,
+    },
+    async (request) => {
+      calls.push(request);
+      return {
+        body: {
+          ...apiResponse,
+          operator_name: "Poco",
+          team_status: "Red",
+          active_events: 127,
+        },
+      };
+    },
+  );
+
+  assert.deepEqual(calls, [
+    {
+      url: "http://localhost:29863/northbound/watch/status",
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+    },
+  ]);
+  assert.equal(status.operator, "Poco");
+  assert.equal(status.activeEvents, 127);
 });
 
 test("compactRemStatus maps latest event for the watchface panel", () => {

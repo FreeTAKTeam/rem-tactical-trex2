@@ -1,11 +1,11 @@
 export const remConfig = {
-  baseUrl: "",
+  baseUrl: "http://localhost:29863",
   apiToken: "",
   pollIntervalSeconds: 30,
   timeoutMs: 5000,
   staleTimeoutSeconds: 90,
   debugCoordinates: false,
-  mockMode: true,
+  mockMode: false,
 };
 
 export function normalizeRemConfig(config = {}) {
@@ -22,6 +22,6 @@ export function normalizeRemConfig(config = {}) {
     timeoutMs: Number.isFinite(Number(merged.timeoutMs))
       ? Number(merged.timeoutMs)
       : remConfig.timeoutMs,
-    mockMode: merged.mockMode !== false || !merged.baseUrl,
+    mockMode: Boolean(merged.mockMode) || !String(merged.baseUrl || "").trim(),
   };
 }

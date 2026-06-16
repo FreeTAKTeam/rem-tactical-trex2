@@ -2,12 +2,14 @@
   "name": "rem-zepp-os",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Zepp OS 2.1 application for the Amazfit T-Rex 2",
   "engines": {
     "node": "20.x"
   },
   "scripts": {
-    "assets": "node scripts/generate-assets.mjs"
+    "assets": "node scripts/generate-assets.mjs",
+    "test": "node --test test/rem-status-cache.test.js"
   },
   "devDependencies": {
     "@zeppos/device-types": "3.0.1",

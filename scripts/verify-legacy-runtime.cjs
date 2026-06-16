@@ -89,6 +89,19 @@ const checks = [
       legacy.includes("REM TIMEOUT"),
   ],
   [
+    "watchface guards duplicate lifecycle init",
+    legacy.includes("let faceInitialized = false") &&
+      legacy.includes("if (faceInitialized)") &&
+      legacy.includes("faceInitialized = true"),
+  ],
+  [
+    "compass listener is registered once",
+    legacy.includes("let compassListenerRegistered = false") &&
+      legacy.includes("handleCompassChange") &&
+      legacy.includes("if (!compassListenerRegistered)") &&
+      legacy.includes("compassListenerRegistered = true"),
+  ],
+  [
     "old combined compass image is not used",
     !legacy.includes("compass-needle"),
   ],

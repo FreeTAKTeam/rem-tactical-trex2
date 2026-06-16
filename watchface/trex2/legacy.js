@@ -1,6 +1,8 @@
 import { getGlobal } from "../../shared/global";
 import { REM_MESSAGE_TYPES, REM_REQUEST_METHOD } from "../../common/messageTypes";
 import { remConfig } from "../../common/remConfig";
+import { readRemStatusCache, writeRemStatusCache } from "../../common/remCache";
+import { isRemStatusStale, makeErrorStatus } from "../../common/remModel";
 
 const COLOR = {
   background: 0x030603,
@@ -41,8 +43,11 @@ const METRIC_DIGITS = [
   "images/metrics/operator/9.png",
 ];
 
-const REM_POLL_INTERVAL_MS = 10000;
-const REM_REQUEST_TIMEOUT_MS = 5000;
+const REM_POLL_INTERVAL_MS = Math.max(
+  10,
+  Number(remConfig.pollIntervalSeconds || 10),
+) * 1000;
+const REM_REQUEST_TIMEOUT_MS = Number(remConfig.timeoutMs || 5000);
 const REM_STATUS_REQUEST = "REM_STATUS_REQUEST";
 
 let globalNS;
@@ -68,6 +73,8 @@ let latestRemStatus = null;
 let remRequestCount = 0;
 let remRequestInFlight = false;
 let remWatchdogTimer = null;
+let compassListenerRegistered = false;
+let faceInitialized = false;
 
 function textWidget(x, y, w, h, text, color, size, align) {
   return hmUI.createWidget(hmUI.widget.TEXT, {
@@ -133,6 +140,14 @@ function showCompassAngle(directionAngle) {
   setText(headingText, `${String(normalized).padStart(3, "0")}\u00b0`);
 }
 
+function handleCompassChange(compassRes) {
+  if (compassRes.calibration_status) {
+    showCompassAngle(compassRes.direction_angle);
+  } else {
+    showCompassInvalid();
+  }
+}
+
 function startCompass() {
   const screenType = hmSetting.getScreenType();
   if (screenType !== hmSetting.screen_type.WATCHFACE) {
@@ -164,13 +179,10 @@ function startCompass() {
     showCompassInvalid();
   }
 
-  compass.addEventListener(hmSensor.event.CHANGE, function (compassRes) {
-    if (compassRes.calibration_status) {
-      showCompassAngle(compassRes.direction_angle);
-    } else {
-      showCompassInvalid();
-    }
-  });
+  if (!compassListenerRegistered) {
+    compass.addEventListener(hmSensor.event.CHANGE, handleCompassChange);
+    compassListenerRegistered = true;
+  }
 }
 
 function stopCompass() {
@@ -255,23 +267,49 @@ function renderLastEvent(status) {
 }
 
 function fallbackRemStatus(connection) {
-  const previous = latestRemStatus || {};
-  return {
-    connection: connection || previous.connection || "CONNECTED",
-    operatorStatus: previous.operatorStatus || "ACTIVE",
-    operatorEam: previous.operatorEam || previous.operatorStatus || "ACTIVE",
-    team: previous.team || "Yellow",
-    teamStatus: previous.teamStatus || previous.team || "Yellow",
-    lastSyncAge: previous.lastSyncAge || "14:30 UTC",
-    activeEvents: previous.activeEvents || 0,
-    priority: previous.priority || "NORMAL",
-    alert: previous.alert || "NORMAL",
-    lastEvent: normalizeEvent(previous),
-  };
+  return makeErrorStatus(connection || "OFFLINE", latestRemStatus);
+}
+
+function statusForRender(status) {
+  if (
+    status &&
+    status.connection === "CONNECTED" &&
+    isRemStatusStale(status, remConfig.staleTimeoutSeconds)
+  ) {
+    return {
+      ...status,
+      connection: "STALE",
+    };
+  }
+
+  return status;
+}
+
+function loadCachedRemStatus() {
+  const result = readRemStatusCache();
+  if (!result || !result.status) {
+    return null;
+  }
+
+  const rendered = statusForRender(result.status);
+  setBridgeDebug(
+    rendered.connection === "STALE" ? "REM CACHE STALE" : "REM CACHE",
+    rendered.connection === "STALE" ? COLOR.orange : COLOR.green,
+  );
+  renderRemStatus(rendered);
+  return rendered;
+}
+
+function saveRemStatus(status) {
+  if (!status || status.connection === "ERROR" || status.connection === "OFFLINE") {
+    return;
+  }
+
+  writeRemStatusCache(status);
 }
 
 function renderRemStatus(status) {
-  const rendered = status || fallbackRemStatus();
+  const rendered = statusForRender(status || fallbackRemStatus());
   latestRemStatus = rendered;
 
   const color = remStatusColor(rendered);
@@ -357,7 +395,7 @@ function requestRemStatus() {
   const builder = initRemBridge();
   if (!builder || typeof builder.request !== "function") {
     setBridgeDebug("REM NOREQ", COLOR.red);
-    renderRemStatus(fallbackRemStatus("OFFLINE"));
+    renderRemStatus(makeErrorStatus("OFFLINE", latestRemStatus));
     return;
   }
 
@@ -381,7 +419,7 @@ function requestRemStatus() {
     remRequestInFlight = false;
     remWatchdogTimer = null;
     setBridgeDebug("REM TIMEOUT", COLOR.red);
-    renderRemStatus(fallbackRemStatus("OFFLINE"));
+    renderRemStatus(makeErrorStatus("OFFLINE", latestRemStatus));
   }, REM_REQUEST_TIMEOUT_MS);
 
   builder
@@ -404,7 +442,7 @@ function requestRemStatus() {
       clearRemWatchdog();
       if (response && response.type === REM_MESSAGE_TYPES.error) {
         setBridgeDebug("REM ERROR", COLOR.red);
-        renderRemStatus(fallbackRemStatus("ERROR"));
+        renderRemStatus(makeErrorStatus("ERROR", latestRemStatus));
         return;
       }
 
@@ -414,6 +452,7 @@ function requestRemStatus() {
         response ||
         fallbackRemStatus();
       setBridgeDebug(`REM OK EV${Number(status.activeEvents || 0)}`, COLOR.green);
+      saveRemStatus(status);
       renderRemStatus(status);
     })
     .catch(function () {
@@ -423,12 +462,15 @@ function requestRemStatus() {
 
       remRequestInFlight = false;
       clearRemWatchdog();
-      setBridgeDebug("REM TIMEOUT", COLOR.red);
-      renderRemStatus(fallbackRemStatus("OFFLINE"));
+      setBridgeDebug("REM ERROR", COLOR.red);
+      renderRemStatus(makeErrorStatus("OFFLINE", latestRemStatus));
     });
 }
 
 function startRemUpdates() {
+  if (!latestRemStatus) {
+    loadCachedRemStatus();
+  }
   renderRemStatus(latestRemStatus || fallbackRemStatus());
   requestRemStatus();
 
@@ -624,6 +666,13 @@ function buildAod() {
 WatchFace({
   init_view() {
     globalNS = getGlobal();
+    if (faceInitialized) {
+      startCompass();
+      startRemUpdates();
+      return;
+    }
+
+    faceInitialized = true;
     buildNormal();
     buildAod();
     startCompass();
@@ -648,5 +697,8 @@ WatchFace({
   onDestroy() {
     stopCompass();
     stopRemUpdates();
+    faceInitialized = false;
+    compassListenerRegistered = false;
+    compass = null;
   },
 });

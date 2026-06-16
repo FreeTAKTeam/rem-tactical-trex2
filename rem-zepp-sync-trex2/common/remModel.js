@@ -39,6 +39,7 @@ export function validateRemWatchStatus(response) {
 export function compactRemStatus(apiResponse) {
   const status = validateRemWatchStatus(apiResponse);
   const waypoint = status.waypoint || {};
+  const position = status.position || {};
   const latestEvent = status.latest_event || status.last_event || null;
   const waypointLabel =
     waypoint.id && Number.isFinite(Number(waypoint.distance_m))
@@ -61,11 +62,23 @@ export function compactRemStatus(apiResponse) {
     priority: status.highest_priority,
     alert: status.alert_state,
     waypoint: waypointLabel,
+    position: compactPosition(position),
     bearing: Number.isFinite(Number(waypoint.bearing_deg))
       ? Math.round(Number(waypoint.bearing_deg))
       : null,
     lastEvent: compactLastEvent(latestEvent, status),
+    updatedAt: Number(status.last_sync_epoch_ms) || Date.now(),
   };
+}
+
+function compactPosition(position) {
+  const lat = Number(position.lat);
+  const lon = Number(position.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return "";
+  }
+
+  return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
 }
 
 function compactLastEvent(event, status) {
@@ -95,7 +108,9 @@ export function makeErrorStatus(kind, lastStatus) {
     priority: lastStatus?.priority || "NORMAL",
     alert: kind === "ERROR" ? "ERROR" : lastStatus?.alert || "NORMAL",
     waypoint: lastStatus?.waypoint || "",
+    position: lastStatus?.position || "",
     bearing: lastStatus?.bearing ?? null,
     lastEvent: lastStatus?.lastEvent || null,
+    updatedAt: Date.now(),
   };
 }

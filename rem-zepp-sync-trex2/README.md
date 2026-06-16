@@ -33,7 +33,7 @@ Configure `common/remConfig.js` before real API testing:
 
 ```js
 export const remConfig = {
-  baseUrl: "https://rem.example.local/api",
+  baseUrl: "http://localhost:29863",
   apiToken: "",
   pollIntervalSeconds: 30,
   timeoutMs: 5000,
@@ -58,14 +58,13 @@ Authorization: Bearer <token>
 Tokens are not logged. Coordinates are not logged unless `debugCoordinates` is
 enabled.
 
-`localhost` is not a valid default for phone-side testing: the Side Service runs
-inside the Zepp mobile app environment, so REM must be reachable through a LAN,
-bridge, or remote HTTPS endpoint.
+The default points at the REM Android loopback watch status server. If REM
+Settings changes the watch server port, update `baseUrl` to match it.
 
 ## Mock Mode
 
-Mock mode is the default when `baseUrl` is empty. Tap anywhere on the REM Sync
-screen to cycle:
+Mock mode remains available for watch-only testing when `mockMode` is set to
+`true` or `baseUrl` is empty. Tap anywhere on the REM Sync screen to cycle:
 
 - normal connected state
 - stale state

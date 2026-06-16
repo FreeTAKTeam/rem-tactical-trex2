@@ -7,11 +7,28 @@ import { isHmBleDefined, isHmAppDefined } from './js-module'
 
 let logger
 
+const noopLogger = {
+  levels: { all: 'all', warn: 'warn' },
+  connect() {},
+  debug() {},
+  error() {},
+  log() {},
+  warn() {},
+}
+
+function getLogger(name) {
+  if (typeof Logger !== 'undefined' && Logger && typeof Logger.getLogger === 'function') {
+    return Logger.getLogger(name)
+  }
+
+  return noopLogger
+}
+
 if (isHmAppDefined()) {
-  logger = Logger.getLogger('device-message')
+  logger = getLogger('device-message')
   // logger.level = logger.levels.warn
 } else {
-  logger = Logger.getLogger('side-message')
+  logger = getLogger('side-message')
 }
 
 const DEBUG = false
@@ -162,13 +179,15 @@ class SessionMgr {
 }
 
 export class MessageBuilder extends EventBus {
-  constructor({ appId = 0, appDevicePort = 20, appSidePort = 0 } = {
+  constructor({ appId = 0, appDevicePort = 20, appSidePort = 0, ble = undefined } = {
     appId: 0,
     appDevicePort: 20,
     appSidePort: 0,
+    ble: undefined,
   }, ) {
     super()
-    this.isDevice = isHmBleDefined()
+    this.ble = ble || (isHmBleDefined() ? hmBle : undefined)
+    this.isDevice = Boolean(this.ble)
     this.isSide = !this.isDevice
 
     this.appId = appId
@@ -204,8 +223,8 @@ export class MessageBuilder extends EventBus {
       this.onMessage(message)
     })
 
-    hmBle &&
-      hmBle.createConnect((index, data, size) => {
+    this.ble &&
+      this.ble.createConnect((index, data, size) => {
         // logger.warn('[RAW] [R] receive index=>%d size=>%d bin=>%s', index, size, this.bin2hex(data))
         console.log('createConnect-------', size)
         this.onFragmentData(data)
@@ -219,13 +238,13 @@ export class MessageBuilder extends EventBus {
     // logger.debug('app ble disconnect')
     this.sendClose()
     this.off('message')
-    hmBle && hmBle.disConnect()
+    this.ble && this.ble.disConnect()
 
     cb && cb(this)
   }
 
   connectStatus(){
-    return hmBle && hmBle.connectStatus()
+    return this.ble && this.ble.connectStatus()
   }
 
   listen(cb) {
@@ -389,7 +408,7 @@ export class MessageBuilder extends EventBus {
     // hmBle 发送消息
     // logger.warn('[RAW] [S] send size=%d bin=%s', buf.byteLength, this.bin2hex(buf.buffer))
     console.log('sendBin-------', buf.byteLength)
-    hmBle.send(buf.buffer, buf.byteLength)
+    this.ble.send(buf.buffer, buf.byteLength)
   }
 
   sendBinBySide(buf) {
@@ -410,7 +429,7 @@ export class MessageBuilder extends EventBus {
   _logSend(buf) {
     // 日志的 send 里面不要打日志
     if (this.isDevice) {
-      hmBle.send(buf.buffer, buf.byteLength)
+      this.ble.send(buf.buffer, buf.byteLength)
     } else {
       messaging.peerSocket.send(buf.buffer)
     }
