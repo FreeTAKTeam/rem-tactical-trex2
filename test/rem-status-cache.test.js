@@ -10,6 +10,7 @@ import {
   parseRemStatusCache,
   serializeRemStatus,
 } from "../common/remModel.js";
+import { parseMecpEventTitle } from "../common/remEventDisplay.js";
 
 const apiStatus = {
   type: "rem.watch.status",
@@ -69,4 +70,23 @@ test("production face is wired to watchface-owned cache before bridge requests",
   assert.match(source, /writeRemStatusCache/);
   assert.match(source, /isRemStatusStale/);
   assert.match(source, /REM_REQUEST_METHOD/);
+});
+
+test("MECP event title exposes rail alert level and visible code", () => {
+  assert.deepEqual(parseMecpEventTitle("MECP/0/P01"), {
+    alertLevel: 0,
+    title: "P01",
+  });
+  assert.deepEqual(parseMecpEventTitle("MECP/1/P01"), {
+    alertLevel: 1,
+    title: "P01",
+  });
+  assert.deepEqual(parseMecpEventTitle("MECP/2/P01"), {
+    alertLevel: 2,
+    title: "P01",
+  });
+  assert.deepEqual(parseMecpEventTitle("MECP/3/D01"), {
+    alertLevel: 3,
+    title: "D01",
+  });
 });

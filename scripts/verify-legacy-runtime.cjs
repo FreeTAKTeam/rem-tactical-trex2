@@ -8,8 +8,8 @@ const appJs = fs.readFileSync("app.js", "utf8");
 const messageTypes = fs.readFileSync("common/messageTypes.js", "utf8");
 
 const checks = [
-  ["app version is 1.3.21", app.app.version.name === "1.3.21"],
-  ["app version code is 39", app.app.version.code === 39],
+  ["app version is 1.3.24", app.app.version.name === "1.3.24"],
+  ["app version code is 42", app.app.version.code === 42],
   ["app targets API 1.0.1", app.runtime.apiVersion.target === "1.0.1"],
   [
     "active module is legacy",
@@ -37,6 +37,10 @@ const checks = [
       legacy.includes("images/metrics/operator/"),
   ],
   [
+    "heart BPM label is compact and right of metric",
+    legacy.includes('textWidget(158, 126, 38, 14, "BPM", COLOR.textDim, 9, hmUI.align.LEFT)'),
+  ],
+  [
     "battery uses legacy data binding",
     legacy.includes("type: hmUI.data_type.BATTERY"),
   ],
@@ -59,8 +63,18 @@ const checks = [
       legacy.indexOf('src: "images/compass-arrow.png"'),
   ],
   [
-    "operator label is renamed",
-    legacy.includes('"C0rv0"') && !legacy.includes('"OPERATOR"'),
+    "compass tap target opens native compass",
+    legacy.includes('url: "CompassScreen"') &&
+      legacy.includes("appid: 1") &&
+      legacy.includes("click_func: launchCompassApp") &&
+      legacy.indexOf("click_func: launchCompassApp") > legacy.indexOf("teamText = textWidget"),
+  ],
+  [
+    "operator call sign is rendered from REM status",
+    legacy.includes("operatorNameText") &&
+      legacy.includes("rendered.operator") &&
+      !legacy.includes('"C0rv0"') &&
+      !legacy.includes('"OPERATOR"'),
   ],
   [
     "team value is renamed",
@@ -71,13 +85,45 @@ const checks = [
     !legacy.includes("2m AGO") && legacy.includes("rendered.lastSyncAge"),
   ],
   [
-    "gps block is replaced by last-event panel",
+    "gps block is replaced by compact last-event panel",
     legacy.includes("renderLastEvent") &&
       legacy.includes("eventSeverityRail") &&
-      legacy.includes('"POSITION / MOVE"') &&
+      legacy.includes("parseMecpEventTitle") &&
+      legacy.includes("timeAgoLabel") &&
+      !legacy.includes('"POSITION / MOVE"') &&
       !legacy.includes('"GPS"') &&
       !legacy.includes('"3D"') &&
       !legacy.includes('"FIX"'),
+  ],
+  [
+    "bottom event count and priority placeholders are removed",
+    !legacy.includes("eventsText") &&
+      !legacy.includes("priorityText") &&
+      !legacy.includes('"EV 0"') &&
+      !legacy.includes('"NORMAL", COLOR.green, 13'),
+  ],
+  [
+    "bridge debug label is hidden behind flag",
+    legacy.includes("const SHOW_BRIDGE_DEBUG = false") &&
+      legacy.includes("if (!SHOW_BRIDGE_DEBUG)") &&
+      legacy.includes("if (SHOW_BRIDGE_DEBUG)"),
+  ],
+  [
+    "MECP event level maps to rail colors",
+    legacy.includes("alertLevel === 0") &&
+      legacy.includes("return COLOR.red") &&
+      legacy.includes("alertLevel === 1") &&
+      legacy.includes("return COLOR.yellow") &&
+      legacy.includes("alertLevel === 2") &&
+      legacy.includes("return COLOR.green") &&
+      legacy.includes("alertLevel === 3") &&
+      legacy.includes("return COLOR.blue"),
+  ],
+  [
+    "event rail is recreated when color changes",
+    legacy.includes("createEventSeverityRail") &&
+      legacy.includes("updateEventSeverityRail") &&
+      legacy.includes("eventSeverityRailColor"),
   ],
   [
     "watchface uses REM Sync companion bridge",

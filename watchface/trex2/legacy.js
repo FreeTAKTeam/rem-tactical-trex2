@@ -2,6 +2,7 @@ import { getGlobal } from "../../shared/global";
 import { REM_MESSAGE_TYPES, REM_REQUEST_METHOD } from "../../common/messageTypes";
 import { remConfig } from "../../common/remConfig";
 import { readRemStatusCache, writeRemStatusCache } from "../../common/remCache";
+import { parseMecpEventTitle } from "../../common/remEventDisplay";
 import { isRemStatusStale, makeErrorStatus } from "../../common/remModel";
 
 const COLOR = {
@@ -12,6 +13,7 @@ const COLOR = {
   textDim: 0x8fa08c,
   cyan: 0x6ff5e7,
   blue: 0x72b8ff,
+  yellow: 0xffe45c,
   orange: 0xff9f2e,
   red: 0xff4a32,
 };
@@ -49,22 +51,28 @@ const REM_POLL_INTERVAL_MS = Math.max(
 ) * 1000;
 const REM_REQUEST_TIMEOUT_MS = Number(remConfig.timeoutMs || 5000);
 const REM_STATUS_REQUEST = "REM_STATUS_REQUEST";
+const SHOW_BRIDGE_DEBUG = false;
+const EVENT_RAIL = {
+  x: 48,
+  y: 294,
+  w: 4,
+  h: 84,
+};
 
 let globalNS;
 let compass;
 let compassArrow;
 let headingText;
 let connectionText;
+let operatorNameText;
 let operatorStatusText;
 let teamText;
 let lastSyncText;
-let eventsText;
-let priorityText;
-let eventCategoryText;
 let eventTitleTopText;
 let eventTitleBottomText;
 let eventMetaText;
 let eventSeverityRail;
+let eventSeverityRailColor = null;
 let bridgeDebugText;
 let messageBuilder;
 let remRequestTimer = null;
@@ -222,6 +230,74 @@ function eventSeverityColor(event) {
   return COLOR.cyan;
 }
 
+function eventAlertColor(alertLevel, event) {
+  if (alertLevel === 0) {
+    return COLOR.red;
+  }
+  if (alertLevel === 1) {
+    return COLOR.yellow;
+  }
+  if (alertLevel === 2) {
+    return COLOR.green;
+  }
+  if (alertLevel === 3) {
+    return COLOR.blue;
+  }
+
+  return eventSeverityColor(event);
+}
+
+function createEventSeverityRail(color) {
+  eventSeverityRailColor = color;
+  eventSeverityRail = hmUI.createWidget(hmUI.widget.FILL_RECT, {
+    x: EVENT_RAIL.x,
+    y: EVENT_RAIL.y,
+    w: EVENT_RAIL.w,
+    h: EVENT_RAIL.h,
+    color,
+    show_level: hmUI.show_level.ONLY_NORMAL,
+  });
+}
+
+function updateEventSeverityRail(color) {
+  if (!eventSeverityRail) {
+    createEventSeverityRail(color);
+    return;
+  }
+
+  if (eventSeverityRailColor === color) {
+    return;
+  }
+
+  eventSeverityRailColor = color;
+  eventSeverityRail.setProperty &&
+    eventSeverityRail.setProperty(hmUI.prop.MORE, { color });
+  createEventSeverityRail(color);
+}
+
+function timeAgoLabel(value) {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return String(value || "--");
+  }
+
+  const seconds = Math.max(0, Math.floor((Date.now() - parsed) / 1000));
+  if (seconds < 60) {
+    return "NOW";
+  }
+  if (seconds < 3600) {
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes} MIN AGO`;
+  }
+  if (seconds < 86400) {
+    const hours = Math.floor(seconds / 3600);
+    return `${hours} HR AGO`;
+  }
+
+  const days = Math.floor(seconds / 86400);
+  return `${days} DAY AGO`;
+}
+
 function normalizeEvent(status) {
   const previous = latestRemStatus || {};
   const previousEvent = previous.lastEvent || {};
@@ -229,7 +305,7 @@ function normalizeEvent(status) {
 
   return {
     severity: event.severity || "SAFETY",
-    category: event.category || "POSITION / MOVE",
+    category: event.category || "",
     title: event.title || "STRANDED / STUCK",
     source: event.source || "ZAPPA",
     time: event.time || "7:16 PM",
@@ -247,23 +323,16 @@ function compactText(value, fallback, maxLength) {
 
 function renderLastEvent(status) {
   const event = normalizeEvent(status);
-  const title = String(event.title || "").toUpperCase();
-  const titleParts = title.split("/");
-  const topTitle = compactText(titleParts[0], "EVENT", 10);
-  const bottomTitle = titleParts.length > 1
-    ? compactText(`/ ${titleParts.slice(1).join("/").trim()}`, "", 10)
-    : "";
-  const meta = `${compactText(event.source, "SRC", 6)} ${String(event.time || "--").toUpperCase()}`;
-  const severityColor = eventSeverityColor(event);
+  const parsedTitle = parseMecpEventTitle(event.title);
+  const title = compactText(parsedTitle.title, "EVENT", 10);
+  const author = compactText(event.source, "SRC", 10);
+  const timeAgo = compactText(timeAgoLabel(event.time), "--", 12);
+  const severityColor = eventAlertColor(parsedTitle.alertLevel, event);
 
-  eventSeverityRail &&
-    eventSeverityRail.setProperty(hmUI.prop.MORE, {
-      color: severityColor,
-    });
-  setText(eventCategoryText, compactText(event.category, "EVENT", 15), COLOR.blue);
-  setText(eventTitleTopText, topTitle, COLOR.white);
-  setText(eventTitleBottomText, bottomTitle, COLOR.white);
-  setText(eventMetaText, meta, COLOR.textDim);
+  updateEventSeverityRail(severityColor);
+  setText(eventTitleTopText, title, COLOR.white);
+  setText(eventTitleBottomText, author, COLOR.white);
+  setText(eventMetaText, timeAgo, COLOR.textDim);
 }
 
 function fallbackRemStatus(connection) {
@@ -316,18 +385,20 @@ function renderRemStatus(status) {
   const operatorState =
     rendered.operatorEam || rendered.operatorStatus || "UNKNOWN";
   const teamState = rendered.teamStatus || rendered.team || "UNKNOWN";
-  const activeEvents = Number(rendered.activeEvents || 0);
 
   setText(connectionText, rendered.connection || "CONNECTED", color);
+  setText(operatorNameText, rendered.operator || "--", COLOR.green);
   setText(operatorStatusText, operatorState);
   setText(teamText, teamState);
   setText(lastSyncText, rendered.lastSyncAge || "--");
-  setText(eventsText, `EV ${activeEvents}`);
-  setText(priorityText, rendered.priority || rendered.alert || "NORMAL", color);
   renderLastEvent(rendered);
 }
 
 function setBridgeDebug(text, color) {
+  if (!SHOW_BRIDGE_DEBUG) {
+    return;
+  }
+
   setText(bridgeDebugText, text, color || COLOR.orange);
 }
 
@@ -502,6 +573,15 @@ function launchCompassApp() {
 
   try {
     hmApp.startApp({
+      url: "CompassScreen",
+      native: true,
+    });
+    return;
+  } catch (error) {
+  }
+
+  try {
+    hmApp.startApp({
       appid: 1,
       url: "CompassScreen",
       native: true,
@@ -564,7 +644,7 @@ function buildNormal() {
     type: hmUI.data_type.HEART,
     show_level: hmUI.show_level.ONLY_NORMAL,
   });
-  textWidget(85, 132, 90, 18, "BPM", COLOR.textDim, 13);
+  textWidget(158, 126, 38, 14, "BPM", COLOR.textDim, 9, hmUI.align.LEFT);
 
   textWidget(268, 75, 130, 22, "BATTERY", COLOR.green, 15);
   hmUI.createWidget(hmUI.widget.TEXT_IMG, {
@@ -580,29 +660,14 @@ function buildNormal() {
   textWidget(364, 107, 32, 28, "%", COLOR.white, 23);
 
   buildClock(hmUI.show_level.ONLY_NORMAL);
-  bridgeDebugText = textWidget(117, 263, 220, 18, "REM INIT", COLOR.orange, 13);
+  if (SHOW_BRIDGE_DEBUG) {
+    bridgeDebugText = textWidget(117, 263, 220, 18, "REM INIT", COLOR.orange, 13);
+  }
 
-  eventSeverityRail = hmUI.createWidget(hmUI.widget.FILL_RECT, {
-    x: 48,
-    y: 294,
-    w: 4,
-    h: 84,
-    color: COLOR.cyan,
-    show_level: hmUI.show_level.ONLY_NORMAL,
-  });
-  eventCategoryText = textWidget(
-    55,
-    293,
-    94,
-    14,
-    "POSITION / MOVE",
-    COLOR.blue,
-    9,
-    hmUI.align.LEFT,
-  );
-  eventTitleTopText = textWidget(55, 314, 94, 18, "STRANDED", COLOR.white, 14);
-  eventTitleBottomText = textWidget(55, 332, 94, 18, "/ STUCK", COLOR.white, 13);
-  eventMetaText = textWidget(55, 362, 94, 14, "ZAPPA 7:16 PM", COLOR.textDim, 9);
+  createEventSeverityRail(COLOR.cyan);
+  eventTitleTopText = textWidget(55, 311, 94, 28, "P01", COLOR.white, 23);
+  eventTitleBottomText = textWidget(55, 341, 94, 22, "POCO", COLOR.white, 15);
+  eventMetaText = textWidget(55, 366, 94, 16, "1 MIN AGO", COLOR.textDim, 10);
 
   textWidget(167, 286, 120, 20, "HEADING", COLOR.green, 14);
   hmUI.createWidget(hmUI.widget.IMG, {
@@ -628,27 +693,25 @@ function buildNormal() {
   });
   headingText = textWidget(164, 306, 126, 35, "--\u00b0", COLOR.white, 28);
 
-  hmUI.createWidget(hmUI.widget.BUTTON, {
-    x: 158,
-    y: 280,
-    w: 138,
-    h: 105,
-    normal_src: "images/touch-target.png",
-    press_src: "images/touch-target.png",
-    text: "",
-    click_func: launchCompassApp,
-    show_level: hmUI.show_level.ONLY_NORMAL,
-  });
-
-  textWidget(302, 291, 112, 20, "C0rv0", COLOR.green, 14);
+  operatorNameText = textWidget(302, 291, 112, 20, "--", COLOR.green, 14);
   operatorStatusText = textWidget(298, 314, 122, 29, "ACTIVE", COLOR.white, 23);
   textWidget(305, 347, 108, 18, "TEAM", COLOR.green, 12);
   teamText = textWidget(299, 364, 120, 27, "Yellow", COLOR.white, 21);
 
   textWidget(129, 412, 91, 18, "LAST SYNC", COLOR.green, 12);
   lastSyncText = textWidget(218, 410, 92, 20, "14:30 UTC", COLOR.white, 14);
-  eventsText = textWidget(309, 410, 52, 20, "EV 0", COLOR.white, 14);
-  priorityText = textWidget(361, 410, 68, 20, "NORMAL", COLOR.green, 13);
+
+  hmUI.createWidget(hmUI.widget.BUTTON, {
+    x: 150,
+    y: 276,
+    w: 154,
+    h: 128,
+    normal_src: "images/touch-target.png",
+    press_src: "images/touch-target.png",
+    text: "",
+    click_func: launchCompassApp,
+    show_level: hmUI.show_level.ONLY_NORMAL,
+  });
 }
 
 function buildAod() {
