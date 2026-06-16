@@ -5,8 +5,8 @@
     "appName": "REM Sync",
     "appType": "app",
     "version": {
-      "code": 7,
-      "name": "0.1.6"
+      "code": 19,
+      "name": "0.1.18"
     },
     "icon": "icon.png",
     "cover": [
@@ -15,7 +15,9 @@
     "vender": "Corvo",
     "description": "REM northbound API sync companion for Amazfit T-Rex 2"
   },
-  "permissions": [],
+  "permissions": [
+    "device:os.ble"
+  ],
   "runtime": {
     "apiVersion": {
       "compatible": "2.1",

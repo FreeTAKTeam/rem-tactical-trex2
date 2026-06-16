@@ -1,9 +1,9 @@
 export const MIN_POLL_INTERVAL_SECONDS = 10;
 
 export const remConfig = {
-  baseUrl: "",
+  baseUrl: "http://localhost:29863",
   apiToken: "",
-  mockMode: true,
+  mockMode: false,
   pollIntervalSeconds: 60,
   timeoutMs: 5000,
   staleTimeoutSeconds: 120,
@@ -25,6 +25,6 @@ export function normalizeRemConfig(config = {}) {
     timeoutMs: Number(merged.timeoutMs) || remConfig.timeoutMs,
     staleTimeoutSeconds:
       Number(merged.staleTimeoutSeconds) || remConfig.staleTimeoutSeconds,
-    mockMode: Boolean(merged.mockMode || !String(merged.baseUrl || "").trim()),
+    mockMode: Boolean(merged.mockMode) || !String(merged.baseUrl || "").trim(),
   };
 }

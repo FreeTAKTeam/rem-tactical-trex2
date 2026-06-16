@@ -1,14 +1,26 @@
+import "../../shared/device-polyfill";
 import ui from "@zos/ui";
 import { px } from "@zos/utils";
-import { mockCompactStatus, nextMockState } from "../../common/mockRem";
+import {
+  REM_DIAGNOSTICS_RESPONSE,
+  REM_MESSAGE_TYPES,
+  REM_REQUEST_METHOD,
+} from "../../common/messageTypes";
+import { remConfig } from "../../common/remConfig";
+import { makeErrorStatus } from "../../common/remModel";
 import { COLORS, LAYOUT } from "./index.style";
 
+const APP_VERSION = "0.1.18";
+const BRIDGE_WATCHDOG_MS = 7000;
+
 let widgets = {};
-let currentStatus = mockCompactStatus("normal");
-let currentMockState = "normal";
+let currentStatus = makeErrorStatus("OFFLINE", null);
 let lastFetchTime = "--";
 let lastApiError = "--";
-let lastPayload = "mock normal";
+let lastPayload = "idle";
+let lastSideState = "?";
+let requestInFlight = false;
+let bridgeWatchdog = null;
 
 function textWidget({ x, y, w, h, text, color, size, align }) {
   return ui.createWidget(ui.widget.TEXT, {
@@ -28,7 +40,7 @@ function textWidget({ x, y, w, h, text, color, size, align }) {
 function setText(widget, text, color) {
   widget &&
     widget.setProperty(ui.prop.MORE, {
-      text: String(text || "--"),
+      text: String(text === undefined || text === null || text === "" ? "--" : text),
       color,
     });
 }
@@ -48,41 +60,158 @@ function valueColor(status) {
 
 function renderStatus(status) {
   currentStatus = status;
-  LAYOUT.rows.forEach((row) => {
-    setText(widgets[row.value], status[row.value], valueColor(status));
-  });
+  const color = valueColor(status);
+  const banner = `${status.connection || "OFFLINE"}  ${status.priority || "NORMAL"}  ${status.alert || "NORMAL"}`;
+
+  setText(widgets.banner, compactValue(banner, 25), color);
   setText(
-    widgets.debug,
-    `FETCH ${lastFetchTime} | ERR ${lastApiError}\nPAYLOAD ${lastPayload} | CACHE OFF`,
-    COLORS.dim
+    widgets.primary,
+    compactValue(`${status.operator || "--"}  ${status.operatorStatus || "--"}  EAM ${status.operatorEam || "--"}`, 30),
+    COLORS.white,
   );
+  setText(
+    widgets.team,
+    compactValue(`TEAM ${status.team || "--"} / ${status.teamStatus || "--"}  EV ${status.activeEvents || 0}`, 30),
+    COLORS.white,
+  );
+  setText(widgets.eventTitle, compactValue(statusValue(status, "latestEventTitle"), 28), COLORS.white);
+  setText(widgets.eventMeta, compactValue(statusValue(status, "latestEventMeta"), 32), COLORS.dim);
+  setText(widgets.position, compactValue(`POS ${status.position || "--"}`, 32), COLORS.white);
+  setText(widgets.sync, compactValue(`SYNC ${status.lastSyncAge || "--"}  FETCH ${lastFetchTime}`, 32), COLORS.dim);
+  setText(widgets.side, compactValue(`SIDE ${lastSideState}  ${lastPayload}`, 30), COLORS.dim);
+  setText(widgets.error, compactValue(`ERR ${lastApiError || "--"}`, 34), lastApiError === "--" ? COLORS.dim : COLORS.orange);
+}
+
+function compactValue(value, maxLength) {
+  const text = String(value === undefined || value === null || value === "" ? "--" : value);
+  return text.length > maxLength ? text.slice(0, maxLength) : text;
+}
+
+function statusValue(status, value) {
+  const event = (status && status.lastEvent) || {};
+  if (value === "teamSummary") {
+    return `${status.team || "--"} / ${status.teamStatus || "--"}`;
+  }
+  if (value === "latestEventTitle") {
+    return compactValue(event.title, 24);
+  }
+  if (value === "latestEventSource") {
+    return compactValue(event.source || status.operator, 12);
+  }
+  if (value === "latestEventMeta") {
+    return `${event.source || status.operator || "--"}  ${event.severity || status.priority || "--"}  ${event.time || "--"}`;
+  }
+
+  return status[value];
 }
 
 function receiveStatus(payload) {
-  if (payload && payload.type === "rem-status") {
+  if (payload && payload.type === REM_MESSAGE_TYPES.response) {
     lastFetchTime = payload.fetchedAt || "--";
     lastApiError = "--";
     lastPayload = payload.mockState || "api";
-    renderStatus(payload.status);
-  } else if (payload && payload.type === "rem-error") {
+    if (payload.diagnostics) {
+      receiveDiagnostics(payload.diagnostics);
+    }
+    renderStatus(payload.data);
+  } else if (payload && payload.type === REM_MESSAGE_TYPES.error) {
     lastFetchTime = payload.fetchedAt || "--";
     lastApiError = payload.error || "ERROR";
-    renderStatus(payload.status || { ...currentStatus, connection: "ERROR" });
+    lastPayload = "error";
+    if (payload.diagnostics) {
+      receiveDiagnostics(payload.diagnostics);
+    }
+    renderStatus(payload.data || makeErrorStatus("ERROR", currentStatus));
+  } else if (payload && payload.connection) {
+    lastFetchTime = String(Date.now());
+    lastApiError = "--";
+    lastPayload = "api";
+    renderStatus(payload);
   }
 }
 
-function cycleMockState() {
-  currentMockState = nextMockState(currentMockState);
-  lastFetchTime = "local";
-  lastApiError = currentMockState === "api-error" ? "mock API error" : "--";
-  lastPayload = `mock ${currentMockState}`;
-  renderStatus(mockCompactStatus(currentMockState));
+function receiveDiagnostics(payload) {
+  if (!payload || payload.type !== REM_DIAGNOSTICS_RESPONSE) {
+    return;
+  }
 
+  lastSideState = payload.fetchAvailable
+    ? `OK v${payload.appVersion || "?"}`
+    : `NOFETCH v${payload.appVersion || "?"}`;
+  if (payload.fetchError) {
+    lastApiError = payload.fetchError;
+  }
+}
+
+function clearBridgeWatchdog() {
+  if (bridgeWatchdog === null) {
+    return;
+  }
+
+  clearTimeout(bridgeWatchdog);
+  bridgeWatchdog = null;
+}
+
+function startBridgeWatchdog() {
+  clearBridgeWatchdog();
+  bridgeWatchdog = setTimeout(() => {
+    bridgeWatchdog = null;
+    if (!requestInFlight) {
+      return;
+    }
+
+    requestInFlight = false;
+    lastFetchTime = String(Date.now());
+    lastApiError = "BRIDGE HANDSHAKE TIMEOUT";
+    lastPayload = "timeout";
+    lastSideState = "TIMEOUT";
+    renderStatus(makeErrorStatus("ERROR", currentStatus));
+  }, BRIDGE_WATCHDOG_MS);
+}
+
+function requestStatus() {
   const messageBuilder = getApp()._options.globalData.messageBuilder;
-  messageBuilder &&
-    messageBuilder.request({
-      method: "SET_MOCK_STATE",
-      params: { state: currentMockState },
+  if (!messageBuilder || typeof messageBuilder.request !== "function") {
+    lastApiError = "NO BRIDGE";
+    lastPayload = "offline";
+    lastSideState = "NO BRIDGE";
+    renderStatus(makeErrorStatus("OFFLINE", currentStatus));
+    return;
+  }
+
+  if (requestInFlight) {
+    return;
+  }
+
+  requestInFlight = true;
+  lastPayload = "fetching";
+  renderStatus(currentStatus);
+  startBridgeWatchdog();
+
+  messageBuilder
+    .request(
+      {
+        type: REM_MESSAGE_TYPES.request,
+        method: REM_REQUEST_METHOD,
+        params: {
+          config: remConfig,
+        },
+      },
+      { timeout: Number(remConfig.timeoutMs) || 5000 },
+    )
+    .then((payload) => {
+      clearBridgeWatchdog();
+      requestInFlight = false;
+      receiveStatus(payload);
+    })
+    .catch((error) => {
+      clearBridgeWatchdog();
+      requestInFlight = false;
+      lastFetchTime = String(Date.now());
+      lastApiError = String(error && error.message ? error.message : error);
+      lastPayload = "error";
+      lastSideState = "TIMEOUT";
+      renderStatus(makeErrorStatus("ERROR", currentStatus));
     });
 }
 
@@ -96,6 +225,14 @@ Page({
       color: COLORS.background,
     });
 
+    ui.createWidget(ui.widget.IMG, {
+      x: px(LAYOUT.icon.x),
+      y: px(LAYOUT.icon.y),
+      w: px(LAYOUT.icon.w),
+      h: px(LAYOUT.icon.h),
+      src: "icon.png",
+    });
+
     textWidget({
       ...LAYOUT.header,
       text: "REM SYNC",
@@ -103,32 +240,22 @@ Page({
       align: ui.align.CENTER_H,
     });
 
-    LAYOUT.rows.forEach((row) => {
-      textWidget({
-        x: row.x,
-        y: row.y,
-        w: row.w,
-        h: 18,
-        text: row.label,
-        color: COLORS.green,
-        size: 13,
-      });
-      widgets[row.value] = textWidget({
-        x: row.x,
-        y: row.y + 18,
-        w: row.w,
-        h: 26,
-        text: "--",
-        color: COLORS.white,
-        size: 22,
-      });
-    });
-
-    widgets.debug = textWidget({
-      ...LAYOUT.debug,
-      text: "",
+    textWidget({
+      ...LAYOUT.version,
+      text: `v${APP_VERSION}`,
       color: COLORS.dim,
     });
+
+    widgets.banner = textWidget({ ...LAYOUT.banner, text: "--", color: COLORS.orange, align: ui.align.CENTER_H });
+    widgets.primary = textWidget({ ...LAYOUT.primary, text: "--", color: COLORS.white, align: ui.align.CENTER_H });
+    widgets.team = textWidget({ ...LAYOUT.team, text: "--", color: COLORS.white, align: ui.align.CENTER_H });
+    textWidget({ ...LAYOUT.eventLabel, text: "LATEST EVENT", color: COLORS.green, align: ui.align.CENTER_H });
+    widgets.eventTitle = textWidget({ ...LAYOUT.eventTitle, text: "--", color: COLORS.white, align: ui.align.CENTER_H });
+    widgets.eventMeta = textWidget({ ...LAYOUT.eventMeta, text: "--", color: COLORS.dim, align: ui.align.CENTER_H });
+    widgets.position = textWidget({ ...LAYOUT.position, text: "--", color: COLORS.white, align: ui.align.CENTER_H });
+    widgets.sync = textWidget({ ...LAYOUT.sync, text: "--", color: COLORS.dim, align: ui.align.CENTER_H });
+    widgets.side = textWidget({ ...LAYOUT.side, text: "--", color: COLORS.dim, align: ui.align.CENTER_H });
+    widgets.error = textWidget({ ...LAYOUT.error, text: "--", color: COLORS.orange, align: ui.align.CENTER_H });
 
     ui.createWidget(ui.widget.BUTTON, {
       x: px(0),
@@ -138,7 +265,7 @@ Page({
       text: "",
       normal_src: "transparent-touch.png",
       press_src: "transparent-touch.png",
-      click_func: cycleMockState,
+      click_func: requestStatus,
     });
 
     const messageBuilder = getApp()._options.globalData.messageBuilder;
@@ -149,5 +276,6 @@ Page({
     }
 
     renderStatus(currentStatus);
+    requestStatus();
   },
 });

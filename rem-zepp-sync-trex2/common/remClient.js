@@ -17,6 +17,28 @@ export function buildRemHeaders(config) {
   return headers;
 }
 
+async function parseRemResponse(response) {
+  if (!response || response.ok === false) {
+    throw new Error(`REM API request failed with status ${response?.status || "unknown"}`);
+  }
+
+  if (response.body !== undefined) {
+    return typeof response.body === "string"
+      ? JSON.parse(response.body)
+      : response.body;
+  }
+
+  if (typeof response.json === "function") {
+    return response.json();
+  }
+
+  if (typeof response.text === "function") {
+    return JSON.parse(await response.text());
+  }
+
+  return response;
+}
+
 export async function fetchRemWatchStatus(config, fetchImpl = globalThis.fetch) {
   const normalized = normalizeRemConfig(config);
 
@@ -32,19 +54,12 @@ export async function fetchRemWatchStatus(config, fetchImpl = globalThis.fetch) 
     setTimeout(() => reject(new Error("REM API request timed out")), normalized.timeoutMs);
   });
 
-  const request = fetchImpl(buildRemStatusUrl(normalized.baseUrl), {
+  const request = fetchImpl({
+    url: buildRemStatusUrl(normalized.baseUrl),
     method: "GET",
     headers: buildRemHeaders(normalized),
   }).then(async (response) => {
-    if (!response || response.ok === false) {
-      throw new Error(`REM API request failed with status ${response?.status || "unknown"}`);
-    }
-
-    const body =
-      typeof response.json === "function"
-        ? await response.json()
-        : JSON.parse(await response.text());
-
+    const body = await parseRemResponse(response);
     return compactRemStatus(body);
   });
 

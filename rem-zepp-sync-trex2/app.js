@@ -1,20 +1,21 @@
 import "./shared/device-polyfill";
-import { getPackageInfo } from "@zos/app";
+import * as ble from "@zos/ble";
+import { REM_SYNC_APP_ID } from "./common/messageTypes";
 import { MessageBuilder } from "./shared/message";
+
+const messageBuilder = new MessageBuilder({
+  appId: REM_SYNC_APP_ID,
+  ble,
+});
 
 App({
   globalData: {
-    messageBuilder: null,
+    messageBuilder,
     latestStatus: null,
     latestError: null,
   },
 
   onCreate() {
-    const { appId } = getPackageInfo();
-    const messageBuilder = new MessageBuilder({
-      appId,
-    });
-    this.globalData.messageBuilder = messageBuilder;
     messageBuilder.connect();
   },
 
