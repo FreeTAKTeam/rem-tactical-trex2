@@ -1,0 +1,58 @@
+{
+  "configVersion": "v3",
+  "app": {
+    "appId": 306967169,
+    "appName": "REM Sync",
+    "appType": "app",
+    "version": {
+      "code": 7,
+      "name": "0.1.6"
+    },
+    "icon": "icon.png",
+    "cover": [
+      "preview.png"
+    ],
+    "vender": "Corvo",
+    "description": "REM northbound API sync companion for Amazfit T-Rex 2"
+  },
+  "permissions": [],
+  "runtime": {
+    "apiVersion": {
+      "compatible": "2.1",
+      "target": "2.1",
+      "minVersion": "2.1"
+    }
+  },
+  "targets": {
+    "trex2": {
+      "module": {
+        "page": {
+          "pages": [
+            "page/status/index"
+          ]
+        },
+        "app-side": {
+          "path": "app-side/index"
+        }
+      },
+      "platforms": [
+        {
+          "name": "trex2-cn",
+          "deviceSource": 418
+        },
+        {
+          "name": "trex2-global",
+          "deviceSource": 419
+        }
+      ],
+      "designWidth": 454
+    }
+  },
+  "i18n": {
+    "en-US": {
+      "appName": "REM Sync"
+    }
+  },
+  "defaultLanguage": "en-US",
+  "debug": true
+}

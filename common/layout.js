@@ -33,6 +33,7 @@ export const LAYOUT = {
     label: { x: 167, y: 286, w: 120, h: 20, size: 14 },
     bearing: { x: 164, y: 306, w: 126, h: 35, size: 28 },
     north: { x: 218, y: 348, w: 18, h: 18, size: 13 },
+    tapTarget: { x: 158, y: 280, w: 138, h: 105 },
   },
   operator: {
     label: { x: 302, y: 291, w: 112, h: 20, size: 14 },

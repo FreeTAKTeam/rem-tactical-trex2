@@ -1,15 +1,20 @@
-import { log } from "@zos/utils";
+import "./shared/device-polyfill";
+import { MessageBuilder } from "./shared/message";
+import { REM_SYNC_APP_ID } from "./common/messageTypes";
 
-const logger = log.getLogger("rem-tactical");
+const messageBuilder = new MessageBuilder({ appId: REM_SYNC_APP_ID });
 
 App({
-  globalData: {},
-
-  onCreate() {
-    logger.info("REM Tactical loaded");
+  globalData: {
+    messageBuilder,
   },
 
+  onCreate() {},
+
   onDestroy() {
-    logger.info("REM Tactical unloaded");
+    try {
+      messageBuilder.disConnect();
+    } catch (error) {
+    }
   },
 });

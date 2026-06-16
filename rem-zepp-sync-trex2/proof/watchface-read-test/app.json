@@ -1,0 +1,57 @@
+{
+  "configVersion": "v3",
+  "app": {
+    "appId": 306967170,
+    "appName": "REM Face Read Proof",
+    "appType": "watchface",
+    "version": {
+      "code": 1,
+      "name": "0.1.0"
+    },
+    "icon": "icon.png",
+    "cover": [
+      "preview.png"
+    ],
+    "vender": "Corvo",
+    "description": "Proof face for REM Sync storage readability"
+  },
+  "permissions": [],
+  "runtime": {
+    "apiVersion": {
+      "compatible": "2.1",
+      "target": "2.1",
+      "minVersion": "2.1"
+    }
+  },
+  "targets": {
+    "trex2": {
+      "module": {
+        "watchface": {
+          "path": "watchface/trex2/index",
+          "main": 1,
+          "editable": 0,
+          "lockscreen": 1,
+          "hightCost": 0
+        }
+      },
+      "platforms": [
+        {
+          "name": "trex2-cn",
+          "deviceSource": 418
+        },
+        {
+          "name": "trex2-global",
+          "deviceSource": 419
+        }
+      ],
+      "designWidth": 454
+    }
+  },
+  "i18n": {
+    "en-US": {
+      "appName": "REM Face Read Proof"
+    }
+  },
+  "defaultLanguage": "en-US",
+  "debug": true
+}
