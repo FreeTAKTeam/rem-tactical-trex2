@@ -10,6 +10,16 @@ Tactical digital watch face for the Amazfit T-Rex 2:
 - Mock REM connection, GPS fix, operator, team, and sync state
 - Reduced always-on display
 
+## REM compatibility
+
+REM Tactical is built for Reticulum Emergency Management (REM) status data. The
+face can be installed and previewed without a live REM endpoint, but the REM
+connection, operator, team, event, waypoint, and sync fields are meaningful only
+when paired with REM or the companion REM Sync app.
+
+This is not a general-purpose tactical watch face. Testers should use it with a
+REM deployment or expect the REM-specific fields to show static/mock data.
+
 ## Set up
 
 From PowerShell in this directory:

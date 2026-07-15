@@ -282,4 +282,12 @@ await fs.copyFile(
   path.join(assetDir, "preview.png"),
 );
 
-console.log("Generated tactical background, preview, and Teko/Black Ops time glyphs");
+await sharp(path.join(assetDir, "preview-v2.png"))
+  .resize(86, 86, {
+    fit: "contain",
+    background: { r: 0, g: 0, b: 0, alpha: 0 },
+  })
+  .png()
+  .toFile(path.join(assetDir, "icon.png"));
+
+console.log("Generated tactical background, preview, icon, and Teko/Black Ops time glyphs");

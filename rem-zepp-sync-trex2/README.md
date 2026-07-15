@@ -6,6 +6,10 @@ watch endpoint and keeps a compact REM status cache on the watch.
 This is not the REM Tactical watch face. The watch face remains separate until a
 physical T-Rex 2 proves that watch faces can read Mini Program storage.
 
+REM Sync works only with Reticulum Emergency Management (REM) compatible watch
+status endpoints. Without REM, the app can still be opened in mock mode for UI
+testing, but it will not sync useful live field data from another system.
+
 ## Target
 
 - Device: Amazfit T-Rex 2
