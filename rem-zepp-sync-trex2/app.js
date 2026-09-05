@@ -3,24 +3,29 @@ import * as ble from "@zos/ble";
 import { REM_SYNC_APP_ID } from "./common/messageTypes";
 import { MessageBuilder } from "./shared/message";
 
-const messageBuilder = new MessageBuilder({
-  appId: REM_SYNC_APP_ID,
-  ble,
-});
-
 App({
   globalData: {
-    messageBuilder,
+    messageBuilder: null,
     latestStatus: null,
     latestError: null,
   },
 
   onCreate() {
+    if (this.globalData.messageBuilder) {
+      return;
+    }
+
+    const messageBuilder = new MessageBuilder({
+      appId: REM_SYNC_APP_ID,
+      ble,
+    });
+    this.globalData.messageBuilder = messageBuilder;
     messageBuilder.connect();
   },
 
   onDestroy() {
-    this.globalData.messageBuilder &&
-      this.globalData.messageBuilder.disConnect();
+    const messageBuilder = this.globalData.messageBuilder;
+    this.globalData.messageBuilder = null;
+    messageBuilder && messageBuilder.disConnect();
   },
 });

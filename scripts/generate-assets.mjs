@@ -175,11 +175,6 @@ const svg = `
     <path d="M52 115 C47 108 35 110 35 119 C35 129 52 139 52 139 C52 139 69 129 69 119 C69 110 57 108 52 115Z"
       fill="#76d35d" opacity=".9"/>
 
-    <!-- battery -->
-    <rect x="397" y="108" width="15" height="27" rx="2" fill="none" stroke="#76d35d" stroke-width="2"/>
-    <rect x="401" y="113" width="7" height="18" fill="#76d35d" opacity=".78"/>
-    <rect x="401" y="104" width="7" height="4" fill="#76d35d"/>
-
     <!-- operator separators and sync signal -->
     <path d="M318 348 H400" stroke="#3f6338"/>
     <g fill="#76d35d">
@@ -192,6 +187,11 @@ const svg = `
 </svg>`;
 
 await fs.mkdir(imageDir, { recursive: true });
+if (process.argv.includes("--background-only")) {
+  await sharp(Buffer.from(svg)).png().toFile(path.join(imageDir, "tactical-bg-v3.png"));
+  console.log("Generated tactical background");
+  process.exit(0);
+}
 await generateTimeFonts();
 await generateMetricFont();
 await sharp({
@@ -244,7 +244,6 @@ const previewOverlay = `
     <text x="233" y="61" class="green center" font-size="16">CONNECTED</text>
     <text x="105" y="91" class="green center" font-size="15">HEART RATE</text>
     <text x="127" y="129" class="white center" font-size="42">72</text>
-    <text x="127" y="145" class="dim center" font-size="13">BPM</text>
     <text x="333" y="91" class="green center" font-size="15">BATTERY</text>
     <text x="330" y="130" class="white center" font-size="40">78%</text>
     <rect x="48" y="294" width="4" height="84" fill="#6ff5e7"/>

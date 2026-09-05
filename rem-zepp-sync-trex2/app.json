@@ -5,8 +5,8 @@
     "appName": "REM Sync",
     "appType": "app",
     "version": {
-      "code": 19,
-      "name": "0.1.18"
+      "code": 20,
+      "name": "0.1.19"
     },
     "icon": "icon.png",
     "cover": [

@@ -10,7 +10,7 @@ import { mockCompactStatus, nextMockState } from "../common/mockRem";
 import { buildRemStatusUrl, fetchRemWatchStatus } from "../common/remClient";
 import { makeErrorStatus } from "../common/remModel";
 
-const APP_VERSION = "0.1.18";
+const APP_VERSION = "0.1.19";
 const messageBuilder = new MessageBuilder();
 const sideStartedAt = Date.now();
 

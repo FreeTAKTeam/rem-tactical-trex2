@@ -1,7 +1,7 @@
 import './buffer'
 import './logger'
 import { EventBus } from './event'
-import { Deferred, timeout } from './defer'
+import { Deferred } from './defer'
 import { json2Buf, buf2Json, buf2hex, bin2hex, bin2json, str2buf } from './data'
 import { isHmBleDefined, isHmAppDefined } from './js-module'
 
@@ -180,6 +180,21 @@ export class MessageBuilder extends EventBus {
     this.shakeTask = Deferred()
     this.waitingShakePromise = this.shakeTask.promise
     this.sessionMgr = new SessionMgr()
+    this._deviceConnected = false
+    this._disconnected = false
+    this._pendingRequests = new Map()
+    this._requestHandshake = null
+    this._requestHandshakeReady = false
+    this._onDeviceMessage = (message) => this.onMessage(message)
+    this._onRequestResponse = ({ traceId, payload }) => {
+      const request = this._pendingRequests.get(traceId)
+      if (request) request.respond(payload)
+    }
+    this._onRequestError = (error) => {
+      // EventBus iterates a live listener array: one shared listener avoids
+      // skipping concurrent requests when settlement removes listeners.
+      Array.from(this._pendingRequests.values()).forEach((request) => request.reject(error))
+    }
 
     // 打开
     // console.log('jsfwk.error', logger.eventBus.count())
@@ -199,28 +214,59 @@ export class MessageBuilder extends EventBus {
     return getTimestamp(t)
   }
 
+  _resetHandshake() {
+    this.shakeTask = Deferred()
+    this.waitingShakePromise = this.shakeTask.promise
+    this._requestHandshake = null
+    this._requestHandshakeReady = false
+  }
+
   connect(cb) {
-    this.on('message', (message) => {
-      this.onMessage(message)
-    })
+    if (this._deviceConnected) {
+      cb && cb(this)
+      return
+    }
 
-    hmBle &&
-      hmBle.createConnect((index, data, size) => {
-        // logger.warn('[RAW] [R] receive index=>%d size=>%d bin=>%s', index, size, this.bin2hex(data))
-        console.log('createConnect-------', size)
-        this.onFragmentData(data)
-      })
+    // disConnect installs a fresh deferred; keep initial pre-connect callers.
+    this.appSidePort = 0
+    this._disconnected = false
+    this._deviceConnected = true
+    const shakeTask = this.shakeTask
+    this._watchRequestHandshake()
+    this.on('message', this._onDeviceMessage)
 
-    this.sendShake()
+    try {
+      hmBle &&
+        hmBle.createConnect((index, data, size) => {
+          // A callback from a closed connection must not revive it after reconnect.
+          if (!this._deviceConnected || this.shakeTask !== shakeTask) return
+          this.onFragmentData(data)
+        })
+      this.sendShake()
+    } catch (error) {
+      // Registration can succeed before handshake sending fails. Roll back
+      // both native state and listeners even if sending Close also fails.
+      try { this.disConnect() } catch (cleanupError) {}
+      throw error
+    }
     cb && cb(this)
   }
 
   disConnect(cb) {
-    // logger.debug('app ble disconnect')
-    this.sendClose()
-    this.off('message')
-    hmBle && hmBle.disConnect()
+    const wasConnected = this._deviceConnected
+    this._deviceConnected = false
+    this._disconnected = true
+    this._onRequestError(Error('Disconnected.'))
+    this.off('message', this._onDeviceMessage)
+    this.sessionMgr.clear()
+    this._resetHandshake()
 
+    try {
+      if (wasConnected) this.sendClose()
+    } finally {
+      this.appSidePort = 0
+      if (wasConnected && hmBle) hmBle.disConnect()
+    }
     cb && cb(this)
   }
 
@@ -236,6 +282,8 @@ export class MessageBuilder extends EventBus {
       })
 
     this.waitingShakePromise = Promise.resolve()
+    this._disconnected = false
+    this._watchRequestHandshake()
     cb && cb(this)
   }
 
@@ -716,6 +764,7 @@ export class MessageBuilder extends EventBus {
   }
 
   onFragmentData(bin) {
+    if (this.isDevice && !this._deviceConnected) return
     const data = this.readBin(bin)
     this.emit('raw', bin)
 
@@ -785,55 +834,86 @@ export class MessageBuilder extends EventBus {
     session.addChunk(payload)
   }
 
+  _watchRequestHandshake() {
+    const handshake = this.waitingShakePromise
+    if (this._requestHandshake === handshake) return
+    this._requestHandshake = handshake
+    this._requestHandshakeReady = false
+    // Only one promise continuation per handshake. Timed-out requests must
+    // not leave closures (and their payloads) on an unresolved shared promise.
+    handshake.then(() => {
+      if (this._requestHandshake !== handshake) return
+      this._requestHandshakeReady = true
+      Array.from(this._pendingRequests.values()).forEach((request) => request.start())
+    }, (error) => {
+      if (this._requestHandshake === handshake) this._onRequestError(error)
+    })
+  }
+
   request(data, opts) {
-    const _request = () => {
-      const defaultOpts = { timeout: 60000 }
-      const requestId = genTraceId()
-      const defer = Deferred()
-      opts = Object.assign(defaultOpts, opts)
-
-      const error = (error) => {
-        this.off('error', error)
-        defer.reject(error)
-      }
-
-      const transact = ({ traceId, payload }) => {
-        // logger.debug('traceId=>%d payload=>%s', traceId, payload.toString('hex'))
-        if (traceId === requestId) {
-          const resultJson = this.buf2Json(payload)
-          // logger.debug('request id=>%d payload=>%j', requestId, data)
-          // logger.debug('response id=>%d payload=>%j', requestId, resultJson)
-
-          this.off('response', transact)
-          this.off('error', error)
-          defer.resolve(resultJson)
-        }
-      }
-
-      this.on('response', transact)
-      this.on('error', error)
-      this.sendJson({ requestId, json: data, type: MessagePayloadType.Request })
-
-      let hasReturned = false
-
-      return Promise.race([
-        timeout(opts.timeout, (resolve, reject) => {
-          if (hasReturned) {
-            return resolve()
-          }
-
-          // logger.error(`request timeout in ${opts.timeout}ms error=> %d data=> %j`, requestId, data)
-          this.off('response', transact)
-
-          reject(Error(`Timed out in ${opts.timeout}ms.`))
-        }),
-        defer.promise.finally(() => {
-          hasReturned = true
-        }),
-      ])
+    const { timeout = 60000 } = opts || {}
+    const defer = Deferred()
+    if (this._disconnected) {
+      defer.reject(Error('Disconnected.'))
+      return defer.promise
     }
 
-    return this.waitingShakePromise.then(_request)
+    const requestId = genTraceId()
+    let timer = null
+    let settled = false
+    let sent = false
+    const finish = (succeeded, value) => {
+      if (settled) return
+      settled = true
+      if (timer !== null) clearTimeout(timer)
+      timer = null
+      this._pendingRequests.delete(requestId)
+      if (this._pendingRequests.size === 0) {
+        // Replace EventBus's arrays instead of splicing the array an active
+        // emit is walking, so unrelated listeners still receive this event.
+        for (const [type, listener] of [
+          ['response', this._onRequestResponse],
+          ['error', this._onRequestError],
+        ]) {
+          const listeners = this.map.get(type)
+          if (listeners) this.map.set(type, listeners.filter((cb) => cb !== listener))
+        }
+      }
+      if (succeeded) defer.resolve(value)
+      else defer.reject(value)
+    }
+    const request = {
+      reject: (error) => finish(false, error),
+      respond: (payload) => {
+        if (!sent || settled) return
+        try {
+          finish(true, this.buf2Json(payload))
+        } catch (error) {
+          finish(false, error)
+        }
+      },
+      start: () => {
+        if (settled || sent) return
+        sent = true
+        try {
+          this.sendJson({ requestId, json: data, type: MessagePayloadType.Request })
+        } catch (error) {
+          finish(false, error)
+        }
+      },
+    }
+
+    if (this._pendingRequests.size === 0) {
+      this.on('response', this._onRequestResponse)
+      this.on('error', this._onRequestError)
+    }
+    this._pendingRequests.set(requestId, request)
+    // The deadline covers both handshake and response, and is always cleared
+    // on settlement (including synchronous send/JSON failures and disconnect).
+    timer = setTimeout(() => finish(false, Error(`Timed out in ${timeout}ms.`)), timeout)
+    this._watchRequestHandshake()
+    if (this._requestHandshakeReady) this.waitingShakePromise.then(request.start)
+    return defer.promise
   }
 
   requestCb(data, opts, cb) {

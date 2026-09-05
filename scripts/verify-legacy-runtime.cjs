@@ -8,8 +8,8 @@ const appJs = fs.readFileSync("app.js", "utf8");
 const messageTypes = fs.readFileSync("common/messageTypes.js", "utf8");
 
 const checks = [
-  ["app version is 1.3.24", app.app.version.name === "1.3.24"],
-  ["app version code is 42", app.app.version.code === 42],
+  ["app version is 1.3.28", app.app.version.name === "1.3.28"],
+  ["app version code is 46", app.app.version.code === 46],
   ["app targets API 1.0.1", app.runtime.apiVersion.target === "1.0.1"],
   [
     "active module is legacy",
@@ -22,10 +22,10 @@ const checks = [
     legacy.includes("hmSensor.createSensor(hmSensor.id.COMPASS)"),
   ],
   ["legacy entry avoids @zos imports", !legacy.includes("@zos/")],
-  ["clock places minutes explicitly", legacy.includes("minute_startX: 239")],
+  ["clock places normal and AOD minutes explicitly", legacy.includes("minute_startX: aod ? 234 : 239")],
   [
     "clock uses visible colon image",
-    legacy.includes('src: "images/time/teko/colon.png"'),
+    legacy.includes('"images/time/teko/colon.png"') && legacy.includes('"images/tactical/aod-colon.png"'),
   ],
   [
     "heart rate uses legacy data binding",
@@ -37,8 +37,8 @@ const checks = [
       legacy.includes("images/metrics/operator/"),
   ],
   [
-    "heart BPM label is compact and right of metric",
-    legacy.includes('textWidget(158, 126, 38, 14, "BPM", COLOR.textDim, 9, hmUI.align.LEFT)'),
+    "heart rate omits redundant BPM label",
+    !legacy.includes('"BPM"'),
   ],
   [
     "battery uses legacy data binding",
@@ -67,7 +67,7 @@ const checks = [
     legacy.includes('url: "CompassScreen"') &&
       legacy.includes("appid: 1") &&
       legacy.includes("click_func: launchCompassApp") &&
-      legacy.indexOf("click_func: launchCompassApp") > legacy.indexOf("teamText = textWidget"),
+      legacy.lastIndexOf("click_func: launchCompassApp") > legacy.indexOf("teamText = textWidget"),
   ],
   [
     "operator call sign is rendered from REM status",
@@ -120,10 +120,12 @@ const checks = [
       legacy.includes("return COLOR.blue"),
   ],
   [
-    "event rail is recreated when color changes",
+    "event rail updates its existing widget when color changes",
     legacy.includes("createEventSeverityRail") &&
       legacy.includes("updateEventSeverityRail") &&
-      legacy.includes("eventSeverityRailColor"),
+      legacy.includes("eventSeverityRailColor") &&
+      legacy.includes("eventSeverityRail.setProperty") &&
+      !/setProperty\(hmUI.prop.MORE, \{ color \}\);\s*createEventSeverityRail/.test(legacy),
   ],
   [
     "watchface uses REM Sync companion bridge",
@@ -164,9 +166,9 @@ checks.push(
     assetGenerator.includes("M52 115") && !assetGenerator.includes("M52 110 C45 100"),
   ],
   [
-    "battery icon geometry is reduced",
-    assetGenerator.includes('width="15" height="27"') &&
-      !assetGenerator.includes('width="19" height="34"'),
+    "battery uses a percent suffix without a background icon",
+    legacy.includes('unit_en: "images/tactical/battery-percent.png"') &&
+      !assetGenerator.includes('<!-- battery -->'),
   ],
   [
     "preview removes last update age wording",

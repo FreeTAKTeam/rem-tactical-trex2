@@ -10,7 +10,7 @@ import { remConfig } from "../../common/remConfig";
 import { makeErrorStatus } from "../../common/remModel";
 import { COLORS, LAYOUT } from "./index.style";
 
-const APP_VERSION = "0.1.18";
+const APP_VERSION = "0.1.19";
 const BRIDGE_WATCHDOG_MS = 7000;
 
 let widgets = {};
@@ -21,6 +21,35 @@ let lastPayload = "idle";
 let lastSideState = "?";
 let requestInFlight = false;
 let bridgeWatchdog = null;
+let pageActive = false;
+let pageGeneration = 0;
+let requestGeneration = 0;
+let pageMessageBuilder = null;
+let callHandler = null;
+
+function isCurrentPage(generation) {
+  return pageActive && generation === pageGeneration &&
+    pageMessageBuilder === getApp()._options.globalData.messageBuilder;
+}
+
+function isCurrentRequest(generation) {
+  return isCurrentPage(pageGeneration) && requestInFlight &&
+    generation === requestGeneration;
+}
+
+function destroyPage() {
+  pageActive = false;
+  pageGeneration += 1;
+  requestGeneration += 1;
+  requestInFlight = false;
+  clearBridgeWatchdog();
+  if (pageMessageBuilder && callHandler) {
+    pageMessageBuilder.off("call", callHandler);
+  }
+  callHandler = null;
+  pageMessageBuilder = null;
+  widgets = {};
+}
 
 function textWidget({ x, y, w, h, text, color, size, align }) {
   return ui.createWidget(ui.widget.TEXT, {
@@ -152,14 +181,14 @@ function clearBridgeWatchdog() {
   bridgeWatchdog = null;
 }
 
-function startBridgeWatchdog() {
+function startBridgeWatchdog(generation) {
   clearBridgeWatchdog();
   bridgeWatchdog = setTimeout(() => {
-    bridgeWatchdog = null;
-    if (!requestInFlight) {
+    if (!isCurrentRequest(generation)) {
       return;
     }
 
+    bridgeWatchdog = null;
     requestInFlight = false;
     lastFetchTime = String(Date.now());
     lastApiError = "BRIDGE HANDSHAKE TIMEOUT";
@@ -170,7 +199,11 @@ function startBridgeWatchdog() {
 }
 
 function requestStatus() {
-  const messageBuilder = getApp()._options.globalData.messageBuilder;
+  if (!isCurrentPage(pageGeneration) || requestInFlight) {
+    return;
+  }
+
+  const messageBuilder = pageMessageBuilder;
   if (!messageBuilder || typeof messageBuilder.request !== "function") {
     lastApiError = "NO BRIDGE";
     lastPayload = "offline";
@@ -179,44 +212,57 @@ function requestStatus() {
     return;
   }
 
-  if (requestInFlight) {
-    return;
-  }
-
+  const generation = ++requestGeneration;
   requestInFlight = true;
   lastPayload = "fetching";
   renderStatus(currentStatus);
-  startBridgeWatchdog();
+  startBridgeWatchdog(generation);
 
-  messageBuilder
-    .request(
-      {
-        type: REM_MESSAGE_TYPES.request,
-        method: REM_REQUEST_METHOD,
-        params: {
-          config: remConfig,
+  const handleError = (error) => {
+    if (!isCurrentRequest(generation)) {
+      return;
+    }
+    clearBridgeWatchdog();
+    requestInFlight = false;
+    lastFetchTime = String(Date.now());
+    lastApiError = String(error && error.message ? error.message : error);
+    lastPayload = "error";
+    lastSideState = "TIMEOUT";
+    renderStatus(makeErrorStatus("ERROR", currentStatus));
+  };
+
+  try {
+    messageBuilder
+      .request(
+        {
+          type: REM_MESSAGE_TYPES.request,
+          method: REM_REQUEST_METHOD,
+          params: {
+            config: remConfig,
+          },
         },
-      },
-      { timeout: Number(remConfig.timeoutMs) || 5000 },
-    )
-    .then((payload) => {
-      clearBridgeWatchdog();
-      requestInFlight = false;
-      receiveStatus(payload);
-    })
-    .catch((error) => {
-      clearBridgeWatchdog();
-      requestInFlight = false;
-      lastFetchTime = String(Date.now());
-      lastApiError = String(error && error.message ? error.message : error);
-      lastPayload = "error";
-      lastSideState = "TIMEOUT";
-      renderStatus(makeErrorStatus("ERROR", currentStatus));
-    });
+        { timeout: Number(remConfig.timeoutMs) || 5000 },
+      )
+      .then((payload) => {
+        if (!isCurrentRequest(generation)) {
+          return;
+        }
+        clearBridgeWatchdog();
+        receiveStatus(payload);
+        requestInFlight = false;
+      })
+      .catch(handleError);
+  } catch (error) {
+    handleError(error);
+  }
 }
 
 Page({
   build() {
+    destroyPage();
+    pageActive = true;
+    const generation = pageGeneration;
+    pageMessageBuilder = getApp()._options.globalData.messageBuilder;
     ui.createWidget(ui.widget.FILL_RECT, {
       x: 0,
       y: 0,
@@ -265,17 +311,29 @@ Page({
       text: "",
       normal_src: "transparent-touch.png",
       press_src: "transparent-touch.png",
-      click_func: requestStatus,
+      click_func: () => {
+        if (isCurrentPage(generation)) {
+          requestStatus();
+        }
+      },
     });
 
-    const messageBuilder = getApp()._options.globalData.messageBuilder;
+    const messageBuilder = pageMessageBuilder;
     if (messageBuilder) {
-      messageBuilder.on("call", ({ payload }) => {
+      callHandler = ({ payload }) => {
+        if (!isCurrentPage(generation)) {
+          return;
+        }
         receiveStatus(messageBuilder.buf2Json(payload));
-      });
+      };
+      messageBuilder.on("call", callHandler);
     }
 
     renderStatus(currentStatus);
     requestStatus();
+  },
+
+  onDestroy() {
+    destroyPage();
   },
 });

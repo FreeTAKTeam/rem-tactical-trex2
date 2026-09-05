@@ -4,6 +4,7 @@ import { remConfig } from "../../common/remConfig";
 import { readRemStatusCache, writeRemStatusCache } from "../../common/remCache";
 import { parseMecpEventTitle } from "../../common/remEventDisplay";
 import { isRemStatusStale, makeErrorStatus } from "../../common/remModel";
+import { normalizeHeading } from "../../common/tacticalDisplay";
 
 const COLOR = {
   background: 0x030603,
@@ -31,7 +32,6 @@ const TIME_DIGITS = [
   "images/time/teko/9.png",
 ];
 
-const VALUE_DIGITS = TIME_DIGITS;
 const METRIC_DIGITS = [
   "images/metrics/operator/0.png",
   "images/metrics/operator/1.png",
@@ -50,6 +50,7 @@ const REM_POLL_INTERVAL_MS = Math.max(
   Number(remConfig.pollIntervalSeconds || 10),
 ) * 1000;
 const REM_REQUEST_TIMEOUT_MS = Number(remConfig.timeoutMs || 5000);
+const COMPASS_REDRAW_MS = 100;
 const REM_STATUS_REQUEST = "REM_STATUS_REQUEST";
 const SHOW_BRIDGE_DEBUG = false;
 const EVENT_RAIL = {
@@ -83,6 +84,18 @@ let remRequestInFlight = false;
 let remWatchdogTimer = null;
 let compassListenerRegistered = false;
 let faceInitialized = false;
+let faceActive = false;
+let remEnabled = false;
+let remNextRequestAt = 0;
+let remFailureCount = 0;
+let cacheLoaded = false;
+let compassActive = false;
+let lastHeading = null;
+let lastCompassDrawAt = 0;
+let textValues = new Map();
+let connectedWidgets = [];
+let tacticalWidgets = [];
+let tacticalVisible = null;
 
 function textWidget(x, y, w, h, text, color, size, align) {
   return hmUI.createWidget(hmUI.widget.TEXT, {
@@ -111,29 +124,20 @@ function setText(widget, text, color) {
   if (color !== undefined) {
     props.color = color;
   }
-
+  const previous = textValues.get(widget);
+  if (previous && previous.text === props.text &&
+      (color === undefined || previous.color === color)) return;
+  textValues.set(widget, { text: props.text, color: color === undefined && previous ? previous.color : color });
   widget.setProperty(hmUI.prop.MORE, props);
 }
 
 function normalizeAngle(directionAngle) {
-  if (
-    directionAngle === undefined ||
-    directionAngle === null ||
-    directionAngle === "INVALID"
-  ) {
-    return null;
-  }
-
-  const angle = parseInt(directionAngle);
-  if (isNaN(angle)) {
-    return null;
-  }
-
-  return ((angle % 360) + 360) % 360;
+  return normalizeHeading(directionAngle);
 }
 
 function showCompassInvalid() {
-  compassArrow && compassArrow.setProperty(hmUI.prop.ANGLE, 0);
+  if (lastHeading !== null) compassArrow && compassArrow.setProperty(hmUI.prop.ANGLE, 0);
+  lastHeading = null;
   setText(headingText, "--\u00b0");
 }
 
@@ -144,11 +148,17 @@ function showCompassAngle(directionAngle) {
     return;
   }
 
-  compassArrow && compassArrow.setProperty(hmUI.prop.ANGLE, -normalized);
+  if (lastHeading !== normalized) compassArrow && compassArrow.setProperty(hmUI.prop.ANGLE, -normalized);
+  lastHeading = normalized;
   setText(headingText, `${String(normalized).padStart(3, "0")}\u00b0`);
 }
 
 function handleCompassChange(compassRes) {
+  if (!faceActive || !compassActive) return;
+  const now = Date.now();
+  if (lastCompassDrawAt && now - lastCompassDrawAt < COMPASS_REDRAW_MS) return;
+  lastCompassDrawAt = now;
+  compassRes = compassRes || compass;
   if (compassRes.calibration_status) {
     showCompassAngle(compassRes.direction_angle);
   } else {
@@ -157,6 +167,7 @@ function handleCompassChange(compassRes) {
 }
 
 function startCompass() {
+  if (!faceActive || compassActive) return;
   const screenType = hmSetting.getScreenType();
   if (screenType !== hmSetting.screen_type.WATCHFACE) {
     return;
@@ -175,11 +186,13 @@ function startCompass() {
     compass = hmSensor.createSensor(hmSensor.id.COMPASS);
   }
 
+  compassActive = true;
+  lastCompassDrawAt = 0;
+  showCompassInvalid();
   compass.start();
 
   if (
-    compass.direction_angle &&
-    compass.direction &&
+    compass.calibration_status &&
     compass.direction_angle !== "INVALID"
   ) {
     showCompassAngle(compass.direction_angle);
@@ -194,7 +207,12 @@ function startCompass() {
 }
 
 function stopCompass() {
-  compass && compass.stop();
+  if (compassActive) compass && compass.stop();
+  compassActive = false;
+  if (compassListenerRegistered && compass && typeof compass.removeEventListener === "function") {
+    compass.removeEventListener(hmSensor.event.CHANGE, handleCompassChange);
+    compassListenerRegistered = false;
+  }
 }
 
 function remStatusColor(status) {
@@ -272,7 +290,6 @@ function updateEventSeverityRail(color) {
   eventSeverityRailColor = color;
   eventSeverityRail.setProperty &&
     eventSeverityRail.setProperty(hmUI.prop.MORE, { color });
-  createEventSeverityRail(color);
 }
 
 function timeAgoLabel(value) {
@@ -381,6 +398,12 @@ function renderRemStatus(status) {
   const rendered = statusForRender(status || fallbackRemStatus());
   latestRemStatus = rendered;
 
+  const connected = remEnabled && rendered.connection === "CONNECTED";
+  showTacticalBlocks(!connected);
+  setText(connectionText, remEnabled ? (rendered.connection || "OFFLINE") : "OFF \u00b7 TAP REM", remEnabled ? remStatusColor(rendered) : COLOR.textDim);
+  setText(lastSyncText, connected ? `LAST SYNC ${rendered.lastSyncAge || "--"}` : "", COLOR.textDim);
+  if (!connected) return;
+
   const color = remStatusColor(rendered);
   const operatorState =
     rendered.operatorEam || rendered.operatorStatus || "UNKNOWN";
@@ -390,7 +413,6 @@ function renderRemStatus(status) {
   setText(operatorNameText, rendered.operator || "--", COLOR.green);
   setText(operatorStatusText, operatorState);
   setText(teamText, teamState);
-  setText(lastSyncText, rendered.lastSyncAge || "--");
   renderLastEvent(rendered);
 }
 
@@ -456,6 +478,7 @@ function dropRemBridge() {
 }
 
 function requestRemStatus() {
+  if (!faceActive || !remEnabled || remRequestInFlight) return;
   if (
     typeof hmSetting !== "undefined" &&
     hmSetting.getScreenType() !== hmSetting.screen_type.WATCHFACE
@@ -464,9 +487,10 @@ function requestRemStatus() {
   }
 
   const builder = initRemBridge();
-  if (!builder || typeof builder.request !== "function") {
+  if (!builder || !remBridgeActive || typeof builder.request !== "function") {
     setBridgeDebug("REM NOREQ", COLOR.red);
     renderRemStatus(makeErrorStatus("OFFLINE", latestRemStatus));
+    finishRemRequest(false);
     return;
   }
 
@@ -489,11 +513,15 @@ function requestRemStatus() {
 
     remRequestInFlight = false;
     remWatchdogTimer = null;
+    remRequestCount += 1;
+    dropRemBridge();
     setBridgeDebug("REM TIMEOUT", COLOR.red);
     renderRemStatus(makeErrorStatus("OFFLINE", latestRemStatus));
+    finishRemRequest(false);
   }, REM_REQUEST_TIMEOUT_MS);
 
-  builder
+  try {
+    builder
     .request(
       {
         type: REM_STATUS_REQUEST,
@@ -505,7 +533,7 @@ function requestRemStatus() {
       { timeout: REM_REQUEST_TIMEOUT_MS },
     )
     .then(function (response) {
-      if (requestCount !== remRequestCount) {
+      if (!faceActive || !remEnabled || requestCount !== remRequestCount) {
         return;
       }
 
@@ -514,6 +542,7 @@ function requestRemStatus() {
       if (response && response.type === REM_MESSAGE_TYPES.error) {
         setBridgeDebug("REM ERROR", COLOR.red);
         renderRemStatus(makeErrorStatus("ERROR", latestRemStatus));
+        finishRemRequest(false);
         return;
       }
 
@@ -525,9 +554,10 @@ function requestRemStatus() {
       setBridgeDebug(`REM OK EV${Number(status.activeEvents || 0)}`, COLOR.green);
       saveRemStatus(status);
       renderRemStatus(status);
+      finishRemRequest(latestRemStatus.connection === "CONNECTED");
     })
     .catch(function () {
-      if (requestCount !== remRequestCount) {
+      if (!faceActive || !remEnabled || requestCount !== remRequestCount) {
         return;
       }
 
@@ -535,35 +565,69 @@ function requestRemStatus() {
       clearRemWatchdog();
       setBridgeDebug("REM ERROR", COLOR.red);
       renderRemStatus(makeErrorStatus("OFFLINE", latestRemStatus));
+      finishRemRequest(false);
     });
+  } catch (error) {
+    remRequestInFlight = false;
+    clearRemWatchdog();
+    renderRemStatus(makeErrorStatus("OFFLINE", latestRemStatus));
+    finishRemRequest(false);
+  }
+}
+
+function finishRemRequest(success) {
+  dropRemBridge();
+  remFailureCount = success ? 0 : Math.min(remFailureCount + 1, 4);
+  const delay = success ? REM_POLL_INTERVAL_MS : Math.min(REM_POLL_INTERVAL_MS * Math.pow(2, remFailureCount - 1), 5 * 60 * 1000);
+  remNextRequestAt = Date.now() + delay;
+  scheduleRemRequest();
+}
+
+function scheduleRemRequest() {
+  if (!faceActive || !remEnabled || remRequestTimer !== null || remRequestInFlight) return;
+  remRequestTimer = globalNS.setTimeout(function () {
+    remRequestTimer = null;
+    requestRemStatus();
+  }, Math.max(1, remNextRequestAt - Date.now()));
 }
 
 function startRemUpdates() {
-  if (!latestRemStatus) {
+  if (!faceActive) return;
+  if (!cacheLoaded) {
+    cacheLoaded = true;
     loadCachedRemStatus();
   }
   renderRemStatus(latestRemStatus || fallbackRemStatus());
-  requestRemStatus();
-
-  if (remRequestTimer !== null) {
-    return;
-  }
-
-  const timers = globalNS || getGlobal();
-  remRequestTimer = timers.setInterval(function () {
-    requestRemStatus();
-  }, REM_POLL_INTERVAL_MS);
+  if (!remEnabled) return;
+  if (Date.now() >= remNextRequestAt) requestRemStatus();
+  else scheduleRemRequest();
 }
 
 function stopRemUpdates() {
   if (remRequestTimer !== null) {
     const timers = globalNS || getGlobal();
-    timers.clearInterval(remRequestTimer);
+    timers.clearTimeout(remRequestTimer);
     remRequestTimer = null;
   }
+  if (remRequestInFlight) remNextRequestAt = Date.now() + REM_POLL_INTERVAL_MS;
+  remRequestCount += 1;
   remRequestInFlight = false;
   clearRemWatchdog();
   dropRemBridge();
+}
+
+function toggleRemConnection() {
+  if (!faceActive) return;
+  remEnabled = !remEnabled;
+  stopRemUpdates();
+  remFailureCount = 0;
+  remNextRequestAt = 0;
+  // A previous cache or session is not evidence of a live connection.
+  renderRemStatus(fallbackRemStatus("OFFLINE"));
+  if (remEnabled) {
+    setText(connectionText, "CONNECTING", COLOR.orange);
+    requestRemStatus();
+  }
 }
 
 function launchCompassApp() {
@@ -591,17 +655,19 @@ function launchCompassApp() {
 }
 
 function buildClock(level) {
+  const aod = level === hmUI.show_level.ONLY_AOD;
+  const digits = aod ? Array.from({ length: 10 }, (_, digit) => `images/tactical/aod-${digit}.png`) : TIME_DIGITS;
   hmUI.createWidget(hmUI.widget.IMG_TIME, {
-    hour_startX: 79,
-    hour_startY: 153,
-    hour_array: TIME_DIGITS,
+    hour_startX: aod ? 144 : 79,
+    hour_startY: aod ? 195 : 153,
+    hour_array: digits,
     hour_zero: 1,
     hour_space: 0,
     hour_angle: 0,
     hour_align: hmUI.align.LEFT,
-    minute_startX: 239,
-    minute_startY: 153,
-    minute_array: TIME_DIGITS,
+    minute_startX: aod ? 234 : 239,
+    minute_startY: aod ? 195 : 153,
+    minute_array: digits,
     minute_zero: 1,
     minute_space: 0,
     minute_angle: 0,
@@ -611,13 +677,64 @@ function buildClock(level) {
   });
 
   hmUI.createWidget(hmUI.widget.IMG, {
-    x: 215,
-    y: 153,
-    w: 24,
-    h: 108,
-    src: "images/time/teko/colon.png",
+    x: aod ? 220 : 215,
+    y: aod ? 195 : 153,
+    w: aod ? 14 : 24,
+    h: aod ? 64 : 108,
+    src: aod ? "images/tactical/aod-colon.png" : "images/time/teko/colon.png",
     show_level: level,
   });
+}
+
+function showTacticalBlocks(visible) {
+  if (tacticalVisible === visible) return;
+  tacticalVisible = visible;
+  connectedWidgets.forEach((widget) => widget.setProperty(hmUI.prop.VISIBLE, !visible));
+  tacticalWidgets.forEach((widget) => widget.setProperty(hmUI.prop.VISIBLE, visible));
+}
+
+function tacticalText(x, y, w, text, color = COLOR.white, size = 14, align = hmUI.align.LEFT) {
+  const widget = textWidget(x, y, w, 26, text, color, size, align);
+  tacticalWidgets.push(widget);
+  return widget;
+}
+
+// Native data bindings are maintained by the OS: no JS weather/GPS polling.
+function tacticalValue(x, y, w, typeName) {
+  const type = hmUI.data_type[typeName];
+  if (type === undefined) return tacticalText(x, y, w, "--");
+  const base = "images/tactical/large/";
+  try {
+    const widget = hmUI.createWidget(hmUI.widget.TEXT_IMG, {
+      x, y, w, h: 34,
+      type,
+      font_array: METRIC_DIGITS,
+      padding: false,
+      h_space: 0,
+      align_h: hmUI.align.CENTER_H,
+      negative_image: `${base}minus.png`,
+      invalid_image: `${base}invalid.png`,
+      dot_image: `${base}dot.png`,
+      show_level: hmUI.show_level.ONLY_NORMAL,
+    });
+    tacticalWidgets.push(widget);
+    return widget;
+  } catch (error) {
+    return tacticalText(x, y, w, "--");
+  }
+}
+
+function tacticalUnit(x, y, w, unit) {
+  return tacticalText(x, y, w, unit, COLOR.white, 16, hmUI.align.CENTER_H);
+}
+
+function buildTacticalBlocks() {
+  tacticalText(48, 286, 110, "ALT", COLOR.green, 18, hmUI.align.CENTER_H);
+  tacticalValue(48, 315, 110, "ALTITUDE");
+  tacticalUnit(48, 350, 110, "m");
+  tacticalText(296, 286, 131, "BAR", COLOR.green, 18, hmUI.align.CENTER_H);
+  tacticalValue(296, 315, 131, "ALTIMETER");
+  tacticalUnit(296, 350, 131, "hPa");
 }
 
 function buildNormal() {
@@ -631,7 +748,13 @@ function buildNormal() {
   });
 
   textWidget(147, 10, 160, 38, "REM", COLOR.green, 31);
-  connectionText = textWidget(126, 43, 202, 23, "CONNECTED", COLOR.green, 15);
+  connectionText = textWidget(126, 43, 202, 23, "OFF \u00b7 TAP REM", COLOR.textDim, 15);
+  hmUI.createWidget(hmUI.widget.BUTTON, {
+    x: 142, y: 7, w: 170, h: 59,
+    normal_src: "images/touch-target.png", press_src: "images/touch-target.png", text: "",
+    click_func: toggleRemConnection,
+    show_level: hmUI.show_level.ONLY_NORMAL,
+  });
 
   textWidget(52, 75, 145, 22, "HEART RATE", COLOR.green, 15);
   hmUI.createWidget(hmUI.widget.TEXT_IMG, {
@@ -644,7 +767,6 @@ function buildNormal() {
     type: hmUI.data_type.HEART,
     show_level: hmUI.show_level.ONLY_NORMAL,
   });
-  textWidget(158, 126, 38, 14, "BPM", COLOR.textDim, 9, hmUI.align.LEFT);
 
   textWidget(268, 75, 130, 22, "BATTERY", COLOR.green, 15);
   hmUI.createWidget(hmUI.widget.TEXT_IMG, {
@@ -655,9 +777,11 @@ function buildNormal() {
     h_space: 0,
     align_h: hmUI.align.CENTER_H,
     type: hmUI.data_type.BATTERY,
+    unit_en: "images/tactical/battery-percent.png",
+    unit_sc: "images/tactical/battery-percent.png",
+    unit_tc: "images/tactical/battery-percent.png",
     show_level: hmUI.show_level.ONLY_NORMAL,
   });
-  textWidget(364, 107, 32, 28, "%", COLOR.white, 23);
 
   buildClock(hmUI.show_level.ONLY_NORMAL);
   if (SHOW_BRIDGE_DEBUG) {
@@ -669,7 +793,7 @@ function buildNormal() {
   eventTitleBottomText = textWidget(55, 341, 94, 22, "POCO", COLOR.white, 15);
   eventMetaText = textWidget(55, 366, 94, 16, "1 MIN AGO", COLOR.textDim, 10);
 
-  textWidget(167, 286, 120, 20, "HEADING", COLOR.green, 14);
+  textWidget(167, 286, 120, 20, "HEADING", COLOR.green, 16);
   hmUI.createWidget(hmUI.widget.IMG, {
     x: 187,
     y: 330,
@@ -695,11 +819,10 @@ function buildNormal() {
 
   operatorNameText = textWidget(302, 291, 112, 20, "--", COLOR.green, 14);
   operatorStatusText = textWidget(298, 314, 122, 29, "ACTIVE", COLOR.white, 23);
-  textWidget(305, 347, 108, 18, "TEAM", COLOR.green, 12);
+  connectedWidgets.push(textWidget(305, 347, 108, 18, "TEAM", COLOR.green, 12));
   teamText = textWidget(299, 364, 120, 27, "Yellow", COLOR.white, 21);
 
-  textWidget(129, 412, 91, 18, "LAST SYNC", COLOR.green, 12);
-  lastSyncText = textWidget(218, 410, 92, 20, "14:30 UTC", COLOR.white, 14);
+  lastSyncText = textWidget(129, 410, 210, 20, "", COLOR.textDim, 12);
 
   hmUI.createWidget(hmUI.widget.BUTTON, {
     x: 150,
@@ -712,6 +835,10 @@ function buildNormal() {
     click_func: launchCompassApp,
     show_level: hmUI.show_level.ONLY_NORMAL,
   });
+  connectedWidgets.push(eventSeverityRail, eventTitleTopText, eventTitleBottomText,
+    eventMetaText, operatorNameText, operatorStatusText, teamText, lastSyncText);
+  buildTacticalBlocks();
+  showTacticalBlocks(true);
 }
 
 function buildAod() {
@@ -720,7 +847,7 @@ function buildAod() {
     y: 0,
     w: 454,
     h: 454,
-    color: COLOR.background,
+    color: 0x000000,
     show_level: hmUI.show_level.ONLY_AOD,
   });
   buildClock(hmUI.show_level.ONLY_AOD);
@@ -730,25 +857,20 @@ WatchFace({
   init_view() {
     globalNS = getGlobal();
     if (faceInitialized) {
-      startCompass();
-      startRemUpdates();
       return;
     }
 
     faceInitialized = true;
     buildNormal();
     buildAod();
-    startCompass();
-    startRemUpdates();
+    resumeFace();
 
     hmUI.createWidget(hmUI.widget.WIDGET_DELEGATE, {
       resume_call: function () {
-        startCompass();
-        startRemUpdates();
+        resumeFace();
       },
       pause_call: function () {
-        stopCompass();
-        stopRemUpdates();
+        pauseFace();
       },
     });
   },
@@ -758,10 +880,37 @@ WatchFace({
   },
 
   onDestroy() {
-    stopCompass();
-    stopRemUpdates();
+    pauseFace();
     faceInitialized = false;
     compassListenerRegistered = false;
     compass = null;
+    latestRemStatus = null;
+    cacheLoaded = false;
+    remEnabled = false;
+    remNextRequestAt = 0;
+    remFailureCount = 0;
+    messageBuilder = null;
+    connectedWidgets = [];
+    tacticalWidgets = [];
+    tacticalVisible = null;
+    eventSeverityRail = null;
+    textValues.clear();
   },
 });
+
+function resumeFace() {
+  if (hmSetting.getScreenType() !== hmSetting.screen_type.WATCHFACE) {
+    pauseFace();
+    return;
+  }
+  if (faceActive) return;
+  faceActive = true;
+  startCompass();
+  startRemUpdates();
+}
+
+function pauseFace() {
+  faceActive = false;
+  stopCompass();
+  stopRemUpdates();
+}

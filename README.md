@@ -2,23 +2,32 @@
 
 Tactical digital watch face for the Amazfit T-Rex 2:
 
-- Zepp OS / API level 2.1
+- Legacy watch-face runtime / API target 1.0.1 (companion app: API 2.1)
 - 454 x 454 round display
 - Device source 418 (Mainland China)
 - Device source 419 (global)
 - Live time, heart rate, battery, and compass heading
-- Mock REM connection, GPS fix, operator, team, and sync state
-- Reduced always-on display
+- Optional live REM connection, operator, team, event, and sync state
+- Disconnected altitude and barometric pressure in large left/right readouts
+- Smaller, dimmer clock on a black always-on display
 
 ## REM compatibility
 
-REM Tactical is built for Reticulum Emergency Management (REM) status data. The
-face can be installed and previewed without a live REM endpoint, but the REM
-connection, operator, team, event, waypoint, and sync fields are meaningful only
-when paired with REM or the companion REM Sync app.
+REM starts **off**. Tap the **REM** name to connect through the installed REM Sync
+companion; tap it again to switch REM off. The choice survives screen sleep in
+the current face instance and resets to off when the face is reloaded. Fresh
+connected responses show the REM event and operator/team blocks. Off, offline,
+error, and stale states show the tactical/environment blocks instead.
 
-This is not a general-purpose tactical watch face. Testers should use it with a
-REM deployment or expect the REM-specific fields to show static/mock data.
+The disconnected `ALT` and `BAR` values come from native watch data bindings and
+do not require REM. Unsupported or missing readings use `--`; example numbers
+are never used as real readings. The animated compass and heading remain the
+center instrument in both modes and update continuously while the face is awake.
+Only the left and right blocks switch content. Tap the center compass to open
+the watch's Compass app.
+
+See [battery mode and device checks](docs/battery-mode.md) for supported data,
+polling behavior, and the physical-watch verification procedure.
 
 ## Set up
 
@@ -62,10 +71,13 @@ numeric app ID assigned by the Zepp developer console.
 ```text
 app.js                         Application lifecycle
 app.json                       T-Rex 2 watch-face configuration
-watchface/trex2/index.js        Live watch-face implementation
+watchface/trex2/legacy.js       Production watch-face implementation
+watchface/trex2/index.js        Previous modern runtime implementation (rollback)
 common/                         Colors, layout, and replaceable REM status
 assets/trex2/                   Background, preview, and icon assets
 scripts/generate-assets.mjs     Deterministic tactical dial generator
+scripts/generate-tactical-assets.mjs  Disconnected/AOD glyphs
+scripts/render-tactical-preview.mjs  Layout previews using sample data
 scripts/setup.ps1               Reproducible Windows tool setup
 scripts/zeus.ps1                Zeus CLI wrapper using portable Node.js
 ```

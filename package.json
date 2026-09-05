@@ -9,7 +9,7 @@
   },
   "scripts": {
     "assets": "node scripts/generate-assets.mjs",
-    "test": "node --test test/rem-status-cache.test.js"
+    "test": "node --test test"
   },
   "devDependencies": {
     "@zeppos/device-types": "3.0.1",
