@@ -22,6 +22,7 @@ function harness() {
   let controllerClock;
   let sourceTime = 0;
   let nativePanel = null;
+  let displayStarts = 0, displayStops = 0;
   const timers = new Map();
   const routes = [];
   const source = fs.readFileSync(new URL("../page/radar/index.js", import.meta.url), "utf8").replace(/^import\s[\s\S]*?;\r?\n/gm, "");
@@ -30,6 +31,7 @@ function harness() {
     createRadarController: (options) => { emit = options.emit; controllerClock = options.clock; return { start() {}, stop() {} }; },
     createReceiptClock: () => { const start = sourceTime; return { now: () => sourceTime - start, reliable: true }; },
     createWristCompass: () => ({ start() {}, stop() {} }),
+    activateDisplayPage() { displayStarts++; let active = true; return () => { if (active) { active = false; displayStops++; } }; },
     getApp: () => ({ _options: { globalData: { messageBuilder: null } } }),
     push: (route) => routes.push(route),
     createWidgetRenderer(ui, px, onTap) { tap = onTap; return { render() { draws++; }, destroy() { destroys++; }, clear() { destroys++; }, panel() { return nativePanel === null ? page.state.panel : nativePanel; } }; },
@@ -39,7 +41,7 @@ function harness() {
     clearTimeout(token) { timers.delete(token); }, Page(value) { page = value; },
   });
   page.onInit(); page.build();
-  return { page, timers, routes, setTime: (time) => { sourceTime = time; }, setNativePanel: (panel) => { nativePanel = panel; }, controllerNow: () => controllerClock.now(), emit: (action) => emit(action), tap: (x, y) => tap(x, y), key: (...args) => key(...args), gesture: (value) => gesture(value), stats: () => ({ offKeys, offGestures, draws, destroys }) };
+  return { page, timers, routes, setTime: (time) => { sourceTime = time; }, setNativePanel: (panel) => { nativePanel = panel; }, controllerNow: () => controllerClock.now(), emit: (action) => emit(action), tap: (x, y) => tap(x, y), key: (...args) => key(...args), gesture: (value) => gesture(value), stats: () => ({ offKeys, offGestures, draws, destroys, displayStarts, displayStops }) };
 }
 
 test("app launch contains no fabricated contacts, heading, polling or timers; Status opens the existing page", () => {
@@ -155,6 +157,18 @@ test("physical UP and DOWN choose markers and SELECT opens their detail panels",
   h.key("select", "click"); assert.equal(h.page.state.view, "details");
   assert.equal(h.page.state.selectedId, "echo");
   h.page.onDestroy();
+});
+
+test("radar rebuild and navigation to status release only their own display lease", () => {
+  const h = harness();
+  assert.equal(h.stats().displayStarts, 1);
+  h.page.build();
+  assert.equal(h.stats().displayStarts, 2);
+  assert.equal(h.stats().displayStops, 1);
+  h.page.dispatch({ type: "STATUS" });
+  assert.equal(h.stats().displayStops, 2);
+  h.page.onDestroy();
+  assert.equal(h.stats().displayStops, 2);
 });
 
 test("crowded rows open by touch but a swipe-ending click cannot select the next page", () => {

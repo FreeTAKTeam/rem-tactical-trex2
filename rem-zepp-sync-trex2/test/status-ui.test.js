@@ -54,7 +54,7 @@ test("status page rows align with REM watch status JSON fields", () => {
 });
 
 test("large-type status reaches its fifth panel with keys and releases its widgets", () => {
-  const widgets = []; let page, key, nativePanel = 1, scrollPages = 0;
+  const widgets = []; let page, key, nativePanel = 1, scrollPages = 0, displayReleased = 0;
   const ui = {
     widget: { TEXT: "TEXT", IMG: "IMG", FILL_RECT: "FILL_RECT" },
     align: { LEFT: 0, CENTER_H: 1, CENTER_V: 2 }, text_style: { WRAP: 1, NONE: 0 }, prop: { MORE: "MORE" },
@@ -69,7 +69,7 @@ test("large-type status reaches its fifth panel with keys and releases its widge
     ui, COLORS, LAYOUT, fromNativePanel, toNativePanel, px: (n) => n,
     Page(value) { page = value; }, getApp: () => ({ _options: { globalData: { messageBuilder: null } } }),
     makeErrorStatus: () => ({ connection: "OFFLINE" }), remConfig: {},
-    acquireInput(handlers) { key = handlers.key; return () => true; }, resetLayerOffset() {},
+    acquireInput(handlers) { key = handlers.key; return () => true; }, resetLayerOffset() {}, activateDisplayPage: () => () => { displayReleased++; },
     KEY_UP: "up", KEY_DOWN: "down", KEY_SELECT: "select", KEY_EVENT_CLICK: "click",
     REM_MESSAGE_TYPES: {}, REM_DIAGNOSTICS_RESPONSE: "diagnostics", REM_REQUEST_METHOD: "status", setTimeout, clearTimeout,
   };
@@ -81,5 +81,6 @@ test("large-type status reaches its fifth panel with keys and releases its widge
   assert.ok(widgets.filter((widget) => widget.type === "TEXT").every((widget) => widget.props.text_size >= 22));
   key("up", "click"); assert.equal(nativePanel, 4);
   page.onDestroy();
+  assert.equal(displayReleased, 1);
   assert.ok(widgets.every((widget) => widget.deleted));
 });

@@ -9,8 +9,9 @@ import {
 import { remConfig } from "../../common/remConfig";
 import { makeErrorStatus } from "../../common/remModel";
 import { COLORS, LAYOUT } from "./index.style";
+import { activateDisplayPage } from "../../common/displaySession.js";
 
-const APP_VERSION = "0.1.30";
+const APP_VERSION = "0.1.31";
 const BRIDGE_WATCHDOG_MS = 7000;
 
 let widgets = {};
@@ -27,6 +28,7 @@ let requestGeneration = 0;
 let pageMessageBuilder = null;
 let callHandler = null;
 let releaseInput = null;
+let releaseDisplay = null;
 let ownedWidgets = [];
 const widgetValues = new Map();
 
@@ -53,6 +55,8 @@ function destroyPage() {
   pageMessageBuilder = null;
   const ownedInput = releaseInput && releaseInput();
   releaseInput = null;
+  if (releaseDisplay) releaseDisplay();
+  releaseDisplay = null;
   if (ownedInput) {
     if (typeof ui.setScrollView === "function") ui.setScrollView(false, px(454), 1, true);
     resetLayerOffset();
@@ -339,6 +343,7 @@ Page({
       gesture: () => false,
     });
 
+    releaseDisplay = activateDisplayPage(getApp()._options.globalData);
     const messageBuilder = pageMessageBuilder;
     if (messageBuilder) {
       callHandler = ({ payload }) => {

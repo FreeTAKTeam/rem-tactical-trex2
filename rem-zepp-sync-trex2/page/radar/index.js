@@ -8,6 +8,7 @@ import { createWidgetRenderer } from "../../common/radar/widgetRenderer.js";
 import { createRadarController } from "../../common/radar/controller.js";
 import { createReceiptClock } from "../../common/radar/clock.js";
 import { createWristCompass } from "../../common/radar/compass.js";
+import { activateDisplayPage } from "../../common/displaySession.js";
 
 // Production starts empty. Source reads are phone-authorized; sample contacts
 // require TRY DEMO and the local legacy heading keeps its unverified reference.
@@ -18,6 +19,7 @@ Page({
     this.active = false;
     this.timer = null;
     this.candidateSwipeAt = null;
+    this.releaseDisplay = null;
   },
 
   build() {
@@ -25,6 +27,7 @@ Page({
     if (this.compass) this.compass.stop();
     if (this.renderer) this.renderer.destroy();
     if (this.releaseInput) this.releaseInput();
+    if (this.releaseDisplay) this.releaseDisplay();
     this.stopClock();
     this.state = createState();
     this.clockSource = createReceiptClock();
@@ -54,6 +57,7 @@ Page({
     }, { resetOffset: resetLayerOffset });
     this.releaseInput = acquireInput({ key: (key, event) => this.key(key, event), gesture: (gesture) => this.gesture(gesture) });
     this.draw();
+    this.releaseDisplay = activateDisplayPage(appData);
     // Compass parity can be checked while REM is disconnected.
     this.compass.start();
     this.controller.start();
@@ -101,6 +105,8 @@ Page({
       this.active = false;
       if (this.releaseInput) this.releaseInput();
       this.releaseInput = null;
+      if (this.releaseDisplay) this.releaseDisplay();
+      this.releaseDisplay = null;
       if (this.renderer) this.renderer.destroy();
       this.renderer = null;
       push({ url: "page/status/index" });
@@ -187,6 +193,8 @@ Page({
     this.compass = null;
     if (this.releaseInput) this.releaseInput();
     this.releaseInput = null;
+    if (this.releaseDisplay) this.releaseDisplay();
+    this.releaseDisplay = null;
     if (this.renderer) this.renderer.destroy();
     this.renderer = null;
     // No location persistence; the next page instance requests a fresh source.

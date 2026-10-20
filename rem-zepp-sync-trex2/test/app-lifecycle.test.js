@@ -7,7 +7,7 @@ import * as messageTypes from "../common/messageTypes.js";
 import { remConfig } from "../common/remConfig.js";
 import { makeErrorStatus } from "../common/remModel.js";
 import { COLORS, LAYOUT } from "../page/status/index.style.js";
-import { createDisplaySession } from "../common/displaySession.js";
+import { createDisplaySession, activateDisplayPage } from "../common/displaySession.js";
 import { fromNativePanel, toNativePanel } from "../common/radar/widgetRenderer.js";
 
 // Execute the production lifecycle hooks with device imports supplied by the
@@ -66,7 +66,7 @@ function createPageHarness(bridge = new FakeBridge()) {
   };
   loadDeviceModule("../page/status/index.js", {
     ...messageTypes, remConfig, makeErrorStatus, COLORS, LAYOUT, ui,
-    px: (value) => value, resetLayerOffset() {}, fromNativePanel, toNativePanel,
+    px: (value) => value, resetLayerOffset() {}, fromNativePanel, toNativePanel, activateDisplayPage,
     KEY_UP: "up", KEY_DOWN: "down", KEY_SELECT: "select", KEY_EVENT_CLICK: "click",
     acquireInput(callbacks) { input = callbacks; let active = true; return () => { if (!active) return false; active = false; return true; }; },
     getApp: () => ({ _options: { globalData } }),

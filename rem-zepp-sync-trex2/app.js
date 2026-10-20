@@ -17,7 +17,9 @@ App({
       return;
     }
 
-    const displaySession = createDisplaySession();
+    const displaySession = createDisplaySession({
+      onDiagnostic: (code, result) => console.log("REM display " + code + (result === null ? "" : " " + result)),
+    });
     this.globalData.displaySession = displaySession;
     try {
       displaySession.start();
