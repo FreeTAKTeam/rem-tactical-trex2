@@ -124,13 +124,13 @@ test("touch-scroll then physical SELECT uses the visible panel and releases hand
   assert.equal(h.stats().offKeys, 1, "late teardown cannot release the next page's keys");
 });
 
-test("unchanged radar ticks and unverified headings skip rendering but the stale boundary redraws", () => {
+test("unchanged radar ticks and identical headings skip rendering but the stale boundary redraws", () => {
   const h = harness(); const wall = Date.now();
   h.emit({ type: "SNAPSHOT", snapshot: fixtureState("radar", 0, wall).snapshot, now: 0, wall, clockReliable: true });
   h.page.dispatch({ type: "HEADING", value: 10, status: "valid", reference: "unverified" });
   const initial = h.stats().draws;
   for (let i = 1; i <= 10; i++) {
-    h.page.dispatch({ type: "HEADING", value: i * 10, status: "valid", reference: "unverified" });
+    h.page.dispatch({ type: "HEADING", value: 10, status: "valid", reference: "unverified" });
     h.setTime(i * 1000);
     const [id, tick] = h.timers.entries().next().value;
     h.timers.delete(id); tick();
@@ -141,5 +141,34 @@ test("unchanged radar ticks and unverified headings skip rendering but the stale
   h.timers.delete(id); tick();
   assert.equal(h.stats().draws, initial + 1);
   assert.equal(h.page.scene.status, "POSITION STALE");
+  h.page.onDestroy();
+});
+
+test("physical UP and DOWN choose markers and SELECT opens their detail panels", () => {
+  const h = harness();
+  h.page.state = fixtureState("radar"); h.page.state.selectedId = null; h.page.draw();
+  h.key("down", "click");
+  assert.equal(h.page.state.selectedId, "alpha");
+  h.key("select", "click"); assert.equal(h.page.state.view, "details");
+  h.key("back", "click"); h.key("up", "click");
+  assert.equal(h.page.state.selectedId, "echo");
+  h.key("select", "click"); assert.equal(h.page.state.view, "details");
+  assert.equal(h.page.state.selectedId, "echo");
+  h.page.onDestroy();
+});
+
+test("crowded rows open by touch but a swipe-ending click cannot select the next page", () => {
+  const h = harness();
+  const base = fixtureState("crowded");
+  h.page.state = { ...base, view: "candidates", candidates: base.snapshot.markers.map((marker) => marker.id), focus: 0, candidateOffset: 0 };
+  h.page.draw();
+  h.gesture("swipe-up");
+  const target = h.page.scene.targets[0];
+  h.tap(target.x + target.w / 2, target.y + target.h / 2);
+  assert.equal(h.page.state.view, "candidates");
+  h.setTime(400);
+  h.tap(target.x + target.w / 2, target.y + target.h / 2);
+  assert.equal(h.page.state.view, "details");
+  assert.equal(h.page.state.selectedId, "cluster-3");
   h.page.onDestroy();
 });

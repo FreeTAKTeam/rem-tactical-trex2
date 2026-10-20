@@ -19,7 +19,9 @@ The user's second visual correction removes operational text overlays from the r
 
 This is the UI-first increment of [issue #2](https://github.com/FreeTAKTeam/rem-tactical-trex2/issues/2), requested on 20 October 2026. It extends the **REM Sync Zepp mini app**. The radar is its launch page; **REM STATUS** still opens the existing operational-status page. The user subsequently authorized a narrow watch-face change: REM Tactical 1.3.29 launches the radar when its central compass is tapped.
 
-Current candidate: **0.1.28**, with Watch Status plugin **1.1.2** installed. Bridge installed app 0.1.27 and watch face 1.3.29; the user confirmed that tapping the face's compass opens the full radar app. The latest app candidate fixes legacy sensor compatibility and is not yet installed. Physical compass acceptance, true-heading conversion, a proven firmware reception clock and live NATO-color verification remain open. The updated Android plugin was installed and verified before generating each new watch-app installation QR, in the order requested by the user.
+Current candidate: **0.1.30**, with Watch Status plugin **1.1.3** installed. Bridge installed app **0.1.29** and watch face **1.3.29**. The user confirmed the face's compass launches the full app and that the radar labels rotate while the center arrow stays fixed, then accepted the radar. The current increment improves marker selection/details and enlarges text throughout the mini app. Its package and installation QR are ready; Bridge currently reports no online app, so 0.1.30 is not claimed installed. The updated Android plugin was installed and independently verified before creating this watch-app QR, as requested.
+
+The user explicitly chose rotation from valid watch-compass readings while retaining an amber warning and “North reference unverified” on WRIST. This supersedes the older frozen-reference policy recorded below. Invalid/calibration readings still freeze orientation. No magnetic declination conversion, verified true-north alignment or trustworthy firmware reception clock is claimed.
 
 Historical checkpoint sections below describe evidence captured at that time. A direct root Zeus build later cleared the shared `dist` directory. Current packages, QRs, scene renders and source-contract reports have been restored or regenerated; earlier checkpoint package and proof copies are no longer retained there. Source files and private device captures under `.tools` survived. The current build wrapper and recovery checkpoint below supersede older retention statements.
 
@@ -75,7 +77,7 @@ Open `http://127.0.0.1:4782/preview/radar/`. The preview serves only its own fil
 
 Use the condition selector, wrist-heading slider and quarter-turn buttons. Tap the display's contact dots, inspect details, press Back, age the snapshot and inspect crowded contacts. The preview's Status action explains the device route; the **native** action opens the real existing status page.
 
-`npm run radar:render` writes 13 round 454 × 454 fixture PNGs to `dist/rem-radar-ui/` and a three-screen review image to `dist/REM-Radar-UI.png`.
+`npm run radar:render` writes 22 round 454 × 454 fixture PNGs to `dist/rem-radar-ui/`, a three-screen review image to `dist/REM-Radar-UI.png`, and the marker-interface review to `dist/REM-Marker-UI.png`.
 
 Run the two existing test suites separately, from their respective directories:
 
@@ -88,16 +90,16 @@ node --test test
 node scripts/run-zeus.cjs build -t "Amazfit T-Rex 2"
 ```
 
-The Zepp package remains app ID **1117630**, currently **REM Sync 0.1.26**, with device sources **418 and 419**. It is an app package, with the existing BLE Side Service and both radar/status routes. Package output is in `rem-zepp-sync-trex2/dist/`.
+The Zepp package remains app ID **1117630**, currently **REM Sync 0.1.30** (code 31), with device sources **418 and 419**. It is an app package using legacy API 1.0.1, with the existing BLE Side Service and both radar/status routes. Package output is in `rem-zepp-sync-trex2/dist/`; the retained copy is `dist/REM-Radar-0.1.30.zab`.
 
 ## Integration gates still open
 
-The software implementation does not complete issue #2. Firmware and live-source acceptance remain unproven:
+The user accepted radar rotation in 0.1.29. Local software evidence and that acceptance do not establish every original hardware gate:
 
-1. Verify the legacy watch-local compass on the mini-app firmware: sensor axis, calibration, lifecycle, north reference and true-heading conversion. The 0.1.26 candidate adopts the working face's legacy API 1.0.1 device runtime after hardware showed that the API-2.1 host did not expose a usable compass. The modern API-3 Compass is not imported. Unverified headings cannot rotate true-bearing contacts. Phone heading is not a fallback.
-2. Install and authorize the protected Watch Status adapter against the phone's actual REM signer, then validate live source visibility, authentication, freshness and the existing Zepp Side Service. Local Java-to-watch contract evidence is already recorded below.
-3. The actual phone/Zepp loopback and phone-to-watch rendering path is now observed on 0.1.25. Validate foreground/background transitions, physical key events, rotation limits, touch coordinates and firmware text metrics. The successful path does not establish those remaining behaviours.
-4. Measure 50-marker payloads, stale/reconnect handling, battery and stability on real hardware. Verify whether the firmware exposes the monotonic reception clock; the wall-clock fallback deliberately reports unknown ages. Validate freshness after resume.
+1. Native touch rows, physical buttons, larger firmware fonts and vertical scrolling in 0.1.30 still need an installation/device check. The browser uses the same scenes but approximates firmware fonts and input.
+2. Plugin 1.1.3 is installed against the actual REM signer and its Renew action completes; pairing was saved in Zepp. A controlled 50-marker native-to-watch transport artifact preserves all five source colors. Live marker affiliations and freshness across phone lock/background transitions still need independent device evidence.
+3. Valid watch readings rotate the radar under the user-approved warning policy. Calibration, north reference/declination, the firmware reception clock and navigation accuracy remain unverified. Phone heading is never substituted.
+4. Screen-timeout suppression, stale/reconnect behavior, battery and sustained 50-marker performance remain physical checks. The wall-clock fallback deliberately reports unknown ages.
 
 At the initial UI checkpoint no Android or REM files had changed. The two-repository continuation above subsequently authorized the REM plugin implementation. No third repository is included.
 
@@ -231,3 +233,21 @@ At this checkpoint, USB ADB remains authorized, but Zepp disables Developer Mode
 Run watch-face builds from the root through `npm run watchface:build`, `npm run watchface:preview` or `npm run watchface:bridge`, using Node 20. `scripts/build-watchface.mjs` copies a bounded source snapshot into a new ignored `.tools/watchface-build-*` directory, where Zeus may clear its own `dist`, then retains the resulting watch-face package in the root `dist`. An integration build verified that all five existing app/watch-face package and QR hashes survived. Do not invoke raw Zeus build or preview from the repository root, because that directory also holds retained mini-app and plugin outputs. Companion builds run in `rem-zepp-sync-trex2` and clear only that project's generated directory.
 
 The current verification records are `dist/rem-radar-ui/integration-verification-0.1.28.json`, `package-verification-0.1.28.json`, `source-contract-verification.json` and `dist/watchface-launch-1.3.29/verification.json`. They distinguish installed plugin and user-confirmed launcher behavior from the uninstalled app candidate and remaining hardware gates. Earlier `dist` checkpoint copies were lost; the original 0.1.27 preview binary and private device captures remain under `.tools`. Active dirty implementation branches remain needed and are retained.
+
+## Accepted radar and interface update: 0.1.29–0.1.30
+
+The user approved using the valid legacy watch compass immediately with an amber unverified-north warning. Version **0.1.29 / code 30** applies those readings to orientation while retaining the fixed center arrow. Invalid/calibration readings still freeze orientation; no phone heading or declination correction is introduced. Bridge reported successful installation, Zepp independently listed 0.1.29, and the user confirmed “Labels rotate; centre arrow stays fixed”, followed by “last iteration works!” The user then accepted the radar and chose marker selection/details as the next interface priority.
+
+Watch Status **1.1.3 / code 5** corrects trusted configuration renewal: the page now sends the supported `{type:"action",action:"radar.renew"}` envelope. The previous custom message type never reached the service through the host allowlist. No host security rule is widened. The APK installed successfully, and package-manager output independently confirms 1.1.3. On the phone, Renew completed with “Configuration loaded” and a **480-minute** lifetime; the fresh pairing was saved in Zepp. Its 19 native tests/build and the real configuration-button regression pass. The retained APK is `dist/REM-Watch-Status-Radar-1.1.3-debug.apk` (SHA-256 `72076fc861fbaad22d443475271a0a634943e8d025e53b3efda95b0441137a00`).
+
+The user's next requirements are implemented in **0.1.30 / code 31**:
+
+- Tap a radar marker, or highlight it with UP/DOWN and open it with SELECT. Overlap lists have three **324 × 76 px** tappable rows per page, with a strong focus outline and unchanged source-color dots. UP/DOWN and SELECT reach all candidates; vertical swipes page the list. A press captures its marker ID and cancels after retargeting, hiding, source removal or swipe movement.
+- Marker details use four full-height panels: identity/distance, true map bearing/position accuracy, wrist heading and data age. Long labels wrap above the distance; wide punctuation, CJK and ellipses receive conservative bounds. Swipe vertically or use UP/DOWN; BACK returns to radar.
+- Text is enlarged for reading under stress. Information labels use **24 px**, names **32 px**, main values **32–64 px**, candidate rows **28/24 px**, and footers **22 px**. Radar letters use **28 px** and ranges **20 px**. Status uses **28–34 px** values and five panels so TEAM has its own space. No small action buttons are introduced.
+
+Verification: **117 companion tests**, **65 root tests**, legacy runtime verification, native preview compilation and diff checks pass. Correctness review identified and resolved a press/source-update identity race and wide-punctuation clipping; maintenance review has no remaining actionable findings. Browser interaction checks demonstrated physical-button selection, overlap-row tapping and all four detail panels. Browser text bounds and 22 shared-scene renders support the layout; firmware fonts and native touch remain a device check. `dist/REM-Marker-UI.png` is the review image.
+
+The retained package `dist/REM-Radar-0.1.30.zab` is **113,970 bytes**, SHA-256 `71755f29b8cad818d82691bc6dc69bbbd3b1d28857079e82352bd617106f3489`. Nested archive inspection confirms an API 1.0.1 **app**, ID 1117630, sources 418/419, compiled radar/status pages, Side Service and settings. The official installation QR `dist/REM-Radar-0.1.30-Install-QR.png` independently decodes to the official Zepp host and expires **27 October 2026 at 15:21:29 America/Halifax**. Plugin 1.1.3 was independently rechecked before this QR was generated. Bridge reports no online app, so no 0.1.30 installation or hardware font/touch result is claimed.
+
+Current proof records are `dist/rem-radar-ui/integration-verification-0.1.30.json`, `package-verification-0.1.30.json`, `install-qr-0.1.30.json` and `source-contract-verification.json`; the generic integration record points to this increment. The accepted 0.1.29 package and refreshed QR are retained separately. Active implementation branches are required and unmerged; unrelated dirty files and the user's root README are preserved.

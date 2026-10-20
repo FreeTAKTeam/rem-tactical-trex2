@@ -101,7 +101,9 @@ export function reduce(state, action) {
       const reference = action.reference === "true" ? "true" : "unverified";
       const previous = !action.reset && state.headingState === "valid" && state.headingReference === reference ? state.heading : null;
       const heading = smoothHeading(previous, action.value, action.weight);
-      return { ...state, heading, headingReference: reference, headingState: "valid", orientation: reference === "true" ? heading : state.orientation };
+      // User-approved watch-compass mode rotates with valid local readings.
+      // The reference stays unverified, retaining the amber/WRIST warning.
+      return { ...state, heading, headingReference: reference, headingState: "valid", orientation: heading };
     }
     case "TAP": {
       if (!state.snapshot || state.view !== "radar") return state;

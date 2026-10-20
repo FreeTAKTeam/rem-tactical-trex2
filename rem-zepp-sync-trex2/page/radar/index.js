@@ -17,6 +17,7 @@ Page({
     this.clock = 0;
     this.active = false;
     this.timer = null;
+    this.candidateSwipeAt = null;
   },
 
   build() {
@@ -29,6 +30,7 @@ Page({
     this.clockSource = createReceiptClock();
     this.clock = this.clockSource.now();
     this.active = true;
+    this.candidateSwipeAt = null;
     const appData = getApp()._options.globalData;
     if (!appData.compassBindings) appData.compassBindings = new Map();
     this.controller = createRadarController({
@@ -43,6 +45,10 @@ Page({
     });
     this.renderer = createWidgetRenderer(ui, px, (x, y) => {
       if (!this.active) return;
+      if (this.state.view === "candidates" && this.candidateSwipeAt !== null) {
+        const sinceSwipe = this.clockSource.now() - this.candidateSwipeAt;
+        if (sinceSwipe >= 0 && sinceSwipe < 350) return;
+      }
       const action = actionAt(this.scene, this.state, x, y);
       if (action) this.dispatch(action);
     }, { resetOffset: resetLayerOffset });
@@ -73,6 +79,7 @@ Page({
     if (!this.active) return false;
     if (gesture === GESTURE_RIGHT) return this.back();
     if (this.state.view === "candidates" && (gesture === GESTURE_UP || gesture === GESTURE_DOWN)) {
+      this.candidateSwipeAt = this.clockSource.now();
       this.dispatch({ type: "CANDIDATE_PAGE", direction: gesture === GESTURE_UP ? 1 : -1 });
       return true;
     }

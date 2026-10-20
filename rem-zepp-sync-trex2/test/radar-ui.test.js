@@ -16,22 +16,23 @@ export function fakeUi() {
   let nativePanel = 1;
   const scrolling = [];
   function createWidget(type, props) {
+    const handlers = new Map();
     const widget = {
-      type, props: { ...props }, visible: true, deleted: false,
+      type, props: { ...props }, handlers, visible: true, deleted: false,
       setProperty(name, value) {
         writes++;
         if (name === "MORE") Object.assign(this.props, value);
         else if (name === "VISIBLE") this.visible = value;
       },
       createWidget,
-      addEventListener(name, callback) { events.set(name, callback); },
+      addEventListener(name, callback) { events.set(name, callback); handlers.set(name, callback); },
     };
     widgets.push(widget); return widget;
   }
   const enums = (values) => Object.fromEntries(values.split(" ").map((key) => [key, key]));
   return {
     ui: {
-      widget: enums("GROUP TEXT IMG CIRCLE FILL_RECT"), prop: enums("MORE VISIBLE"), event: { CLICK_UP: "CLICK_UP" },
+      widget: enums("GROUP TEXT IMG CIRCLE FILL_RECT"), prop: enums("MORE VISIBLE"), event: enums("CLICK_UP CLICK_DOWN MOVE"),
       align: enums("LEFT CENTER_H CENTER_V"), text_style: { NONE: 0 }, createWidget,
       deleteWidget(widget) { assert.equal(widget.deleted, false, "widget deleted once"); widget.deleted = true; deletes++; },
       setScrollView(enabled, height, pages, vertical) { scrolling.push({ enabled, height, pages, vertical }); },
@@ -50,17 +51,17 @@ test("details are full-screen without a radar and report independent source ages
   assert.ok(scene.nodes.some((n) => n.id === "position-age" && n.text === "3s"));
   assert.ok(scene.nodes.some((n) => n.id === "marker-age" && n.text === "3s"));
   assert.equal(scene.nodes.some((n) => /notes/i.test(n.id)), false);
-  assert.equal(scene.pages, 3);
+  assert.equal(scene.pages, 4);
   assert.equal(scene.targets.length, 0, "details use physical buttons and native vertical scrolling");
 });
 
 test("source accuracy is visible in details and Connection, while radar remains free of quality text", () => {
   const state = fixtureState("details", 0, wall);
-  assert.equal(radarScene(state, 0).nodes.find((n) => n.id === "position-accuracy").text, "Accuracy 13 m");
+  assert.equal(radarScene(state, 0).nodes.find((n) => n.id === "position-accuracy").text, "13 m");
   const info = radarScene(reduce(state, { type: "INFO" }), 0);
   assert.equal(info.nodes.find((n) => n.id === "position-accuracy").text, "13 m");
   state.snapshot.observer.accuracyM = null;
-  assert.equal(radarScene(state, 0).nodes.find((n) => n.id === "position-accuracy").text, "Accuracy Unknown");
+  assert.equal(radarScene(state, 0).nodes.find((n) => n.id === "position-accuracy").text, "Unknown");
   assert.equal(radarScene(reduce(state, { type: "BACK" }), 0).nodes.some((n) => n.id === "position-accuracy" || n.id === "receipt-age"), false);
 });
 
@@ -73,6 +74,24 @@ test("fixed user pointer and cone never move while cardinals and markers rotate"
   assert.deepEqual(node(first, "cone"), node(second, "cone"));
   assert.notDeepEqual(node(first, "cardinal-N"), node(second, "cardinal-N"));
   assert.notEqual(node(first, "marker-0-color").x, node(second, "marker-0-color").x);
+});
+
+test("watch-compass rotation keeps the amber radar and unverified WRIST warning", () => {
+  const initial = reduce(fixtureState("radar", 0, wall), { type: "HEADING", status: "valid", reference: "unverified", value: 0, weight: 1 });
+  const turned = reduce(initial, { type: "HEADING", status: "valid", reference: "unverified", value: 90, weight: 1 });
+  const first = radarScene(initial, 0), second = radarScene(turned, 0);
+  const node = (scene, id) => scene.nodes.find((n) => n.id === id);
+  assert.equal(turned.headingReference, "unverified");
+  assert.deepEqual(node(first, "operator"), node(second, "operator"));
+  assert.equal(node(second, "operator").src, "radar/operator-warning.png");
+  assert.deepEqual(node(first, "cone"), node(second, "cone"));
+  assert.notDeepEqual(node(first, "cardinal-N"), node(second, "cardinal-N"));
+  assert.notEqual(node(first, "marker-0-color").x, node(second, "marker-0-color").x);
+  assert.equal(node(first, "marker-0-color").color, node(second, "marker-0-color").color);
+  const wrist = radarScene({ ...turned, view: "info", panel: 2 }, 0);
+  assert.equal(node(wrist, "heading-note").text, "North reference unverified");
+  const disconnected = radarScene(reduce(turned, { type: "DISCONNECT" }), 0);
+  assert.equal(node(disconnected, "operator").src, "radar/operator-grey.png");
 });
 
 test("the radar fills the round screen without a brand header and edge contacts retain their touch target", () => {
@@ -154,7 +173,7 @@ test("all review states have unique widget IDs and finite geometry, with no docu
       assert.ok(target.w >= 44 && target.h >= 44, `${name}: ${target.label}`);
       assert.ok(Math.hypot(target.x + target.w / 2 - 227, target.y + target.h / 2 - 227) < 227, `${name}: unreachable control`);
     }
-    if (!scene.hasRadar) assert.equal(scene.targets.length, 0);
+    if (!scene.hasRadar && scene.title !== "candidates") assert.equal(scene.targets.length, 0);
   }
 });
 
@@ -206,6 +225,80 @@ test("native document swipes keep position on data updates and the hidden radar 
   assert.equal(h.scrolling.at(-1).enabled, false);
   renderer.clear();
   assert.equal(h.widgets.filter((w) => !w.deleted).length, 0);
+});
+
+test("native candidate rows tap current stable IDs after paging and ignore hidden or disposed rows", () => {
+  const h = fakeUi();
+  const base = fixtureState("crowded", 0, wall);
+  let state = { ...base, view: "candidates", candidates: base.snapshot.markers.map((m) => m.id), focus: 0, candidateOffset: 0 };
+  let scene, chosen = null;
+  const renderer = createWidgetRenderer(h.ui, (n) => n * 2, (x, y) => { chosen = actionAt(scene, state, x, y); });
+  const render = () => { scene = radarScene(state, 0); renderer.render(scene); };
+  render();
+  const rows = h.widgets.filter((widget) => widget.props.src === "transparent-touch.png");
+  assert.equal(rows.length, 3);
+  assert.ok(rows.every((row) => row.props.h === 152 && row.props.w === 648));
+  rows[0].handlers.get("CLICK_DOWN")({ x: 0, y: 0 });
+  rows[0].handlers.get("CLICK_UP")({ x: 0, y: 0 });
+  assert.equal(chosen.id, "cluster-0");
+  state = reduce(state, { type: "CANDIDATE_PAGE", direction: 1 }); render();
+  rows[0].handlers.get("CLICK_DOWN")({ x: 0, y: 0 });
+  rows[0].handlers.get("CLICK_UP")({ x: 0, y: 0 });
+  assert.equal(chosen.id, "cluster-3", "reused rows resolve the current stable ID");
+  state = reduce(state, { type: "CANDIDATE_PAGE", direction: 1 }); render();
+  chosen = null; rows[1].handlers.get("CLICK_UP")(); assert.equal(chosen, null);
+  state = { ...state, view: "info" }; render();
+  rows[0].handlers.get("CLICK_UP")(); assert.equal(chosen, null);
+  assert.ok(rows.every((row) => row.deleted));
+  renderer.destroy();
+  assert.equal(h.widgets.filter((widget) => !widget.deleted).length, 0);
+});
+
+test("a candidate tap cannot switch identity during a source update or become a swipe click", () => {
+  const h = fakeUi();
+  let state = fixtureState("marker-list", 0, wall), scene, chosen = null;
+  const renderer = createWidgetRenderer(h.ui, (n) => n, (x, y) => { chosen = actionAt(scene, state, x, y); });
+  const render = () => { scene = radarScene(state, 0); renderer.render(scene); };
+  render();
+  const row = h.widgets.find((widget) => widget.props.src === "transparent-touch.png");
+  row.handlers.get("CLICK_DOWN")({ x: 80, y: 140 });
+  state = reduce(state, { type: "SNAPSHOT", snapshot: { ...state.snapshot, sequence: 2, markers: state.snapshot.markers.slice(1) }, now: 0, wall });
+  render(); row.handlers.get("CLICK_UP")();
+  assert.equal(chosen, null, "removing the pressed marker must not open its replacement row");
+  row.handlers.get("CLICK_DOWN")({ x: 80, y: 140 });
+  row.handlers.get("CLICK_UP")();
+  assert.equal(chosen.id, "cluster-1");
+  chosen = null;
+  row.handlers.get("CLICK_DOWN")({ x: 80, y: 140 });
+  row.handlers.get("MOVE")({ x: 80, y: 180 });
+  row.handlers.get("CLICK_UP")();
+  assert.equal(chosen, null, "vertical movement cancels the tap before either gesture event order");
+  renderer.destroy();
+});
+
+test("wide marker labels stay above distance and bearing has its own full panel", () => {
+  const state = fixtureState("details", 0, wall);
+  state.snapshot.markers[0].label = "救".repeat(32);
+  const scene = radarScene(state, 0);
+  const names = scene.nodes.filter((node) => node.id.startsWith("detail-name-"));
+  const distance = scene.nodes.find((node) => node.id === "detail-distance");
+  assert.equal(names.length, 4);
+  assert.equal(names.map((node) => node.text).join(""), state.snapshot.markers[0].label);
+  assert.ok(names.every((node) => Array.from(node.text).length <= 10 && node.y + node.h < distance.y));
+  assert.ok(scene.nodes.find((node) => node.id === "detail-bearing").y >= 454);
+  assert.equal(scene.pages, 4);
+});
+
+test("wide punctuation wraps without hiding the full name or overflowing the candidate preview", () => {
+  const state = fixtureState("wide-name", 0, wall);
+  const names = radarScene(state, 0).nodes.filter((node) => node.id.startsWith("detail-name-"));
+  assert.equal(names.map((node) => node.text).join(""), "@".repeat(32));
+  assert.ok(names.every((node) => node.text.length <= 9));
+  const list = fixtureState("marker-list", 0, wall);
+  list.snapshot.markers[0].label = "@".repeat(32);
+  const preview = radarScene(list, 0).nodes.find((node) => node.id === "candidate-0-name");
+  assert.ok(preview.text.endsWith("…"));
+  assert.ok(preview.text.length <= 8, "the abbreviated name reserves room for the ellipsis");
 });
 
 test("repeated document transitions have bounded live widgets and no radar reconstruction", () => {

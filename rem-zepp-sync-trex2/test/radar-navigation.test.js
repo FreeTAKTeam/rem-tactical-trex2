@@ -20,7 +20,8 @@ test("four-button navigation reaches information, all actions, and marker detail
   assert.equal(state.view, "details"); assert.equal(state.selectedId, id);
   state = reduce(state, { type: "NAVIGATE", direction: 1 }); assert.equal(state.panel, 1);
   state = reduce(state, { type: "NAVIGATE", direction: 1 }); assert.equal(state.panel, 2);
-  state = reduce(state, { type: "NAVIGATE", direction: 1 }); assert.equal(state.panel, 2);
+  state = reduce(state, { type: "NAVIGATE", direction: 1 }); assert.equal(state.panel, 3);
+  state = reduce(state, { type: "NAVIGATE", direction: 1 }); assert.equal(state.panel, 3);
   state = reduce(state, { type: "INFO" }); state = reduce(state, { type: "BACK" });
   assert.equal(state.view, "details");
 });

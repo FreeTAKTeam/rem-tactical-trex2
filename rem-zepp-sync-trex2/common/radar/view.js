@@ -7,7 +7,8 @@ export const C = {
   teal: 0x65dfd2, orange: 0xff893d, warning: 0xffd15c, line: 0x21373b,
 };
 
-// One scene drives the native watch and review. Only the radar owns a tap layer.
+// One scene drives the native watch and review. Radar uses a full-screen tap
+// layer; candidate rows use bounded touch widgets inside their own document.
 export function radarScene(state, now) {
   if (state.view !== "radar") return documentScene(state, now);
   const nodes = [], targets = [];
@@ -25,11 +26,11 @@ export function radarScene(state, now) {
   image("dial", "radar/dial.png", 0, 0, RADAR.size, RADAR.size);
   image("cone", `radar/cone${suffix}.png`, RADAR.cx - RADAR.coneWidth / 2, RADAR.cy - RADAR.radius, RADAR.coneWidth, RADAR.radius);
   for (const [label, bearing] of [["N", 0], ["E", 90], ["S", 180], ["W", 270]]) {
-    const p = project(bearing, RANGE_M, state.orientation, RADAR.radius - 30);
-    text(`cardinal-${label}`, label, p.x - 14, p.y - 14, 28, 28, 22, label === "N" ? C.white : C.muted);
+    const p = project(bearing, RANGE_M, state.orientation, RADAR.radius - 36);
+    text(`cardinal-${label}`, label, p.x - 18, p.y - 18, 36, 36, 28, label === "N" ? C.white : C.muted);
   }
-  text("range", formatDistance(RANGE_M), 313, 53, 62, 20, 12, C.muted);
-  text("half-range", String(RANGE_M / 2), 303, 163, 35, 18, 11, C.muted);
+  text("range", formatDistance(RANGE_M), 302, 55, 86, 28, 20, C.muted);
+  text("half-range", String(RANGE_M / 2), 303, 161, 52, 28, 20, C.muted);
   for (let index = 0; index < MAX_MARKERS; index++) {
     const m = plotted[index];
     if (!m) {

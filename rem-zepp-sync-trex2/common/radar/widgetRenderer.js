@@ -27,11 +27,16 @@ export function createWidgetRenderer(ui, px, onTap, { resetOffset = () => {} } =
     if (pool.visible === show) return;
     pool.group.setProperty(ui.prop.VISIBLE, show);
     if (pool.touch) pool.touch.setProperty(ui.prop.VISIBLE, show);
+    for (const record of pool.rowTouches.values()) {
+      if (!show) record.press = null;
+      record.widget.setProperty(ui.prop.VISIBLE, show && record.visible);
+    }
     pool.visible = show;
   }
   function dispose(pool) {
     visible(pool, false);
     if (pool.touch) ui.deleteWidget(pool.touch);
+    for (const record of pool.rowTouches.values()) ui.deleteWidget(record.widget);
     // Explicitly delete children before the group; no orphaned dial/text layer.
     for (const record of pool.widgets.values()) ui.deleteWidget(record.widget);
     ui.deleteWidget(pool.group);
@@ -53,6 +58,50 @@ export function createWidgetRenderer(ui, px, onTap, { resetOffset = () => {} } =
     const native = typeof ui.getScrollCurrentPage === "function" ? fromNativePanel(ui.getScrollCurrentPage()) : null;
     return Math.min(current.pages - 1, native === null ? current.requestedPanel : native);
   }
+  function renderTouchTargets(scene, pool) {
+    if (scene.hasRadar || !scene.targets.length && !pool.rowTouches.size) return;
+    const active = new Set();
+    for (const target of scene.hasRadar ? [] : scene.targets) {
+      active.add(target.id);
+      let record = pool.rowTouches.get(target.id);
+      if (!record) {
+        record = { target, visible: true, press: null, widget: pool.group.createWidget(ui.widget.IMG,
+          properties({ ...target, type: "image", src: "transparent-touch.png" })) };
+        pool.rowTouches.set(target.id, record);
+        if (!pool.visible) record.widget.setProperty(ui.prop.VISIBLE, false);
+        record.widget.addEventListener(ui.event.CLICK_DOWN, (event) => {
+          record.press = current === pool && pool.visible && record.visible
+            ? { id: record.target.action.id, x: event && event.x, y: event && event.y } : null;
+        });
+        record.widget.addEventListener(ui.event.MOVE, (event) => {
+          if (!record.press) return;
+          const { x, y } = record.press;
+          if (!event || ![x, y, event.x, event.y].every(Number.isFinite) ||
+              Math.hypot(event.x - x, event.y - y) > number(12)) record.press = null;
+        });
+        record.widget.addEventListener(ui.event.CLICK_UP, () => {
+          const press = record.press;
+          record.press = null;
+          if (current !== pool || !pool.visible || !record.visible || !press || press.id !== record.target.action.id) return;
+          const latest = record.target;
+          // Native event coordinates vary by widget. Dispatch the row's known
+          // logical centre, resolving its latest stable ID through actionAt.
+          onTap(latest.x + latest.w / 2, latest.y + latest.h / 2);
+        });
+      } else {
+        if (record.target.action.id !== target.action.id) record.press = null;
+        if (["x", "y", "w", "h"].some((key) => record.target[key] !== target[key])) {
+          record.widget.setProperty(ui.prop.MORE, properties({ ...target, type: "image", src: "transparent-touch.png" }));
+        }
+        if (!record.visible && pool.visible) record.widget.setProperty(ui.prop.VISIBLE, true);
+        record.visible = true;
+        record.target = target;
+      }
+    }
+    for (const [id, record] of pool.rowTouches) if (!active.has(id) && record.visible) {
+      record.widget.setProperty(ui.prop.VISIBLE, false); record.visible = false; record.press = null;
+    }
+  }
   function render(scene) {
     const key = scene.hasRadar ? "radar" : scene.title;
     const changed = !current || current.key !== key;
@@ -62,7 +111,7 @@ export function createWidgetRenderer(ui, px, onTap, { resetOffset = () => {} } =
       if (key !== "radar") documentKey = key;
       if (!pools.has(key)) {
         const pool = { key, pages: scene.pages || 1, requestedPanel: -1, frame: 0, visible: true,
-          widgets: new Map(), touch: null, group: ui.createWidget(ui.widget.GROUP, { x: 0, y: 0, w: number(454), h: number(454 * (scene.pages || 1)) }) };
+          widgets: new Map(), rowTouches: new Map(), touch: null, group: ui.createWidget(ui.widget.GROUP, { x: 0, y: 0, w: number(454), h: number(454 * (scene.pages || 1)) }) };
         pools.set(key, pool);
         visible(pool, false);
       }
@@ -88,6 +137,7 @@ export function createWidgetRenderer(ui, px, onTap, { resetOffset = () => {} } =
       record.widget.setProperty(ui.prop.VISIBLE, false);
       record.visible = false;
     }
+    renderTouchTargets(scene, current);
     if (scene.hasRadar && !current.touch) {
       const radarPool = current;
       current.touch = ui.createWidget(ui.widget.IMG, { x: 0, y: 0, w: number(454), h: number(454), src: "transparent-touch.png" });

@@ -11,7 +11,7 @@ import { buildRemStatusUrl, fetchRemWatchStatus } from "../common/remClient";
 import { makeErrorStatus } from "../common/remModel";
 import { createRadarPhoneClient, RADAR_CONFIG_KEY, RADAR_METHOD, RADAR_ERROR } from "../common/radar/phoneClient.js";
 
-const APP_VERSION = "0.1.28";
+const APP_VERSION = "0.1.30";
 const messageBuilder = new MessageBuilder();
 const sideStartedAt = Date.now();
 

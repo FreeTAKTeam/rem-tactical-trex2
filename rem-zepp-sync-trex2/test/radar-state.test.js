@@ -142,13 +142,13 @@ test("missing source ages and a skewed phone clock never become zero-age data", 
   assert.equal(sourceStatus(state, 16000), "POSITION STALE");
 });
 
-test("heading calibration freezes orientation; unverified magnetic reference cannot rotate true bearings", () => {
+test("heading calibration freezes orientation; accepted watch readings rotate without claiming true north", () => {
   const state = loaded();
   const invalid = reduce(state, { type: "HEADING", status: "calibration" });
   assert.equal(invalid.orientation, state.orientation);
   assert.equal(invalid.headingState, "calibration");
   const magnetic = reduce(state, { type: "HEADING", status: "valid", value: 180, reference: "magnetic", weight: 1 });
-  assert.equal(magnetic.orientation, 45);
+  assert.equal(magnetic.orientation, 180);
   assert.equal(magnetic.headingReference, "unverified");
 });
 
@@ -163,7 +163,7 @@ test("crowded contact paging reaches every candidate and wraps without skipping"
 test("heading reference changes reset smoothing instead of mixing true and magnetic angles", () => {
   let state = loaded();
   state = reduce(state, { type: "HEADING", status: "valid", value: 180, reference: "magnetic", weight: 1 });
-  assert.equal(state.orientation, 45);
+  assert.equal(state.orientation, 180);
   state = reduce(state, { type: "HEADING", status: "valid", value: 45, reference: "true" });
   assert.equal(state.heading, 45);
   assert.equal(state.orientation, 45);

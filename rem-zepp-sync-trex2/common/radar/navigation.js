@@ -5,7 +5,7 @@ export const INFO_ACTIONS = [
   { label: "REM status", action: { type: "STATUS" } },
   { label: "Try demo", action: { type: "DEMO" } },
 ];
-export const panelCount = (state) => state.view === "info" ? 4 : state.view === "details" ? 3 : 1;
+export const panelCount = (state) => state.view === "info" || state.view === "details" ? 4 : 1;
 const clamp = (n, max) => Math.max(0, Math.min(max, n));
 
 export function navigate(state, direction) {

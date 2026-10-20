@@ -22,4 +22,10 @@ const background = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="$
 await sharp(background).composite(await Promise.all(["radar", "details", "disconnected"].map(async (name, index) => ({
   input: await fs.readFile(path.join(out, `${name}.png`)), left: 40 + index * 492, top: 100,
 })))).png().toFile(path.join(root, "dist/REM-Radar-UI.png"));
-console.log(`Rendered ${SCENARIOS.length} app states and dist/REM-Radar-UI.png`);
+const markerPanels = ["marker-list", "unicode", "marker-direction", "marker-age"];
+const markerLabels = ["TAP A ROW OR USE UP / DOWN", "LARGE MARKER NAME / DISTANCE", "BEARING / POSITION ACCURACY", "SEPARATE DATA AGES"];
+const markerBackground = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="590"><rect width="100%" height="100%" fill="#071012"/><text x="40" y="43" fill="#edf3ef" font-family="sans-serif" font-size="24">REM Sync · Marker selection and details · Sample data</text>${markerLabels.map((label,index)=>`<text x="${40+index*492}" y="560" fill="#65dfd2" font-family="sans-serif" font-size="13">${label}</text>`).join("")}</svg>`);
+await sharp(markerBackground).composite(await Promise.all(markerPanels.map(async (name, index) => ({
+  input: await fs.readFile(path.join(out, `${name}.png`)), left: 40 + index * 492, top: 75,
+})))).png().toFile(path.join(root, "dist/REM-Marker-UI.png"));
+console.log(`Rendered ${SCENARIOS.length} app states, dist/REM-Radar-UI.png and dist/REM-Marker-UI.png`);

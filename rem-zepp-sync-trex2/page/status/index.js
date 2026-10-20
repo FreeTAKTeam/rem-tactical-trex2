@@ -10,7 +10,7 @@ import { remConfig } from "../../common/remConfig";
 import { makeErrorStatus } from "../../common/remModel";
 import { COLORS, LAYOUT } from "./index.style";
 
-const APP_VERSION = "0.1.28";
+const APP_VERSION = "0.1.30";
 const BRIDGE_WATCHDOG_MS = 7000;
 
 let widgets = {};
@@ -282,7 +282,7 @@ Page({
       x: 0,
       y: 0,
       w: px(454),
-      h: px(454 * 4),
+      h: px(454 * 5),
       color: COLORS.background,
     }));
 
@@ -317,15 +317,15 @@ Page({
     widgets.side = textWidget({ ...LAYOUT.side, text: "--", color: COLORS.dim, align: ui.align.CENTER_H });
     widgets.error = textWidget({ ...LAYOUT.error, text: "--", color: COLORS.orange, align: ui.align.CENTER_H });
 
-    for (const [panel, title] of [[1, "LATEST EVENT"], [2, "POSITION"], [3, "DIAGNOSTICS"]]) {
-      textWidget({ x: 75, y: panel * 454 + 40, w: 304, h: 40, text: title, color: COLORS.white, size: 24, align: ui.align.CENTER_H });
+    for (const [panel, title] of [[1, "TEAM"], [2, "LATEST EVENT"], [3, "POSITION"], [4, "DIAGNOSTICS"]]) {
+      textWidget({ x: 75, y: panel * 454 + 40, w: 304, h: 40, text: title, color: COLORS.white, size: 28, align: ui.align.CENTER_H });
     }
-    for (let panel = 0; panel < 4; panel++) {
-      textWidget({ x: 77, y: panel * 454 + 381, w: 300, h: 28, text: `UP / DOWN   ${panel + 1} / 4`, color: COLORS.dim, size: 16, align: ui.align.CENTER_H });
-      textWidget({ x: 77, y: panel * 454 + 340, w: 300, h: 28, text: "SELECT refreshes · BACK radar", color: COLORS.dim, size: 17, align: ui.align.CENTER_H });
+    for (let panel = 0; panel < 5; panel++) {
+      textWidget({ x: 77, y: panel * 454 + 381, w: 300, h: 30, text: `UP / DOWN   ${panel + 1} / 5`, color: COLORS.dim, size: 22, align: ui.align.CENTER_H });
+      textWidget({ x: 65, y: panel * 454 + 344, w: 324, h: 30, text: "SELECT refresh · BACK", color: COLORS.dim, size: 24, align: ui.align.CENTER_H });
     }
     resetLayerOffset();
-    if (typeof ui.setScrollView === "function") ui.setScrollView(true, px(454), 4, true);
+    if (typeof ui.setScrollView === "function") ui.setScrollView(true, px(454), 5, true);
     if (typeof ui.setLayerScrolling === "function") ui.setLayerScrolling(false);
     releaseInput = acquireInput({
       key: (key, event) => {
@@ -333,7 +333,7 @@ Page({
         if (key === KEY_SELECT) { requestStatus(); return true; }
         if (key !== KEY_UP && key !== KEY_DOWN) return false;
         const panel = typeof ui.getScrollCurrentPage === "function" ? fromNativePanel(ui.getScrollCurrentPage()) || 0 : 0;
-        if (typeof ui.scrollToPage === "function") ui.scrollToPage(toNativePanel(Math.max(0, Math.min(3, panel + (key === KEY_UP ? -1 : 1)))), false);
+        if (typeof ui.scrollToPage === "function") ui.scrollToPage(toNativePanel(Math.max(0, Math.min(4, panel + (key === KEY_UP ? -1 : 1)))), false);
         return true;
       },
       gesture: () => false,

@@ -251,7 +251,7 @@ test("compass readings after a long gap or clock rollback reset smoothing withou
   time = 100; sensor.direction_angle = 180; callback();
   assert.equal(state.heading, 180);
   assert.equal(state.headingReference, "unverified");
-  assert.equal(state.orientation, 0, "no true-north reference has been proved");
+  assert.equal(state.orientation, 180, "accepted watch-compass mode rotates while retaining its unverified reference");
   compass.stop();
 });
 

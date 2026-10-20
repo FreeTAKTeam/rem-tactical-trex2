@@ -4,10 +4,11 @@ export const SCENARIOS = [
   ["radar", "Radar"], ["details", "Marker details"], ["disconnected", "Disconnected"],
   ["stale", "Stale position"], ["calibration", "Calibration"], ["empty", "No markers"],
   ["crowded", "Crowded markers"], ["maximum", "50 markers"], ["removed", "Marker removed"],
-  ["unknown-age", "Unknown source age"], ["unicode", "Long names"], ["denied", "Access denied"],
+  ["unknown-age", "Unknown source age"], ["unicode", "Long names"], ["wide-name", "Wide marker name"], ["denied", "Access denied"],
   ["setup", "First launch"],
   ["connection", "Connection overview"], ["source", "Position panel"], ["wrist", "Wrist panel"],
-  ["actions", "Physical actions"], ["marker-heading", "Marker wrist panel"], ["marker-age", "Marker age panel"],
+  ["actions", "Physical actions"], ["marker-list", "Marker selection list"], ["marker-direction", "Marker direction panel"],
+  ["marker-heading", "Marker wrist panel"], ["marker-age", "Marker age panel"],
 ];
 
 export function fixtureSnapshot(wall) {
@@ -37,7 +38,7 @@ export function fixtureState(name = "radar", now = 0, wall = Date.now()) {
     snapshot.markers.forEach((m) => { m.markerUpdatedAtUnixMs = null; });
   }
   if (name === "empty") snapshot.markers = [];
-  if (name === "crowded") snapshot.markers = Array.from({ length: 7 }, (_, i) => ({
+  if (name === "crowded" || name === "marker-list") snapshot.markers = Array.from({ length: 7 }, (_, i) => ({
     ...snapshot.markers[i % 5], id: `cluster-${i}`, label: ["ALPHA", "BRAVO", "CHARLIE", "DELTA", "ECHO", "FOXTROT", "GOLF"][i],
     distanceM: 273 + i * 2, bearingDegTrue: 88 + i,
   }));
@@ -49,15 +50,21 @@ export function fixtureState(name = "radar", now = 0, wall = Date.now()) {
     snapshot.truncated = true;
   }
   if (name === "unicode") snapshot.markers[0].label = "ÉQUIPE NORD / 救援 ALPHA LONG NAME";
+  if (name === "wide-name") snapshot.markers[0].label = "@".repeat(32);
   let state = receiveSnapshot({ ...createState(), demo: true }, snapshot, now, wall);
   state = reduce(state, { type: "HEADING", value: 45, status: "valid", reference: "true", weight: 1 });
   state.selectedId = snapshot.markers.length ? snapshot.markers[0].id : null;
-  if (name === "details" || name === "unicode") state.view = "details";
+  if (name === "details" || name === "unicode" || name === "wide-name") state.view = "details";
+  if (name === "marker-list") {
+    state.view = "candidates"; state.candidates = snapshot.markers.map((marker) => marker.id);
+  }
   if (["connection", "source", "wrist", "actions"].includes(name)) {
     state.view = "info";
     state.panel = ["connection", "source", "wrist", "actions"].indexOf(name);
   }
-  if (name === "marker-heading" || name === "marker-age") { state.view = "details"; state.panel = name === "marker-heading" ? 1 : 2; }
+  if (["marker-direction", "marker-heading", "marker-age"].includes(name)) {
+    state.view = "details"; state.panel = ["marker-direction", "marker-heading", "marker-age"].indexOf(name) + 1;
+  }
   if (name === "removed") state = reduce({ ...state, view: "details" }, {
     type: "SNAPSHOT", snapshot: { ...snapshot, sequence: 2, markers: snapshot.markers.slice(1) }, now, wall,
   });
