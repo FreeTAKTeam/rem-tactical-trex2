@@ -10,6 +10,8 @@ export function watchfaceHarness(options = {}) {
   const timers = new Map();
   const requests = [];
   const writes = [];
+  const launches = [];
+  const toasts = [];
   let now = Date.now();
   let timerId = 0;
   let face;
@@ -43,10 +45,14 @@ export function watchfaceHarness(options = {}) {
     parseMecpEventTitle, normalizeHeading,
     Date: class extends Date { static now() { return now; } },
     getApp: () => ({ _options: { globalData: { messageBuilder: builder } } }),
-    hmApp: { startApp() {} },
+    hmApp: options.noStartApp ? {} : { startApp(route) {
+      launches.push({ ...route });
+      if (options.launchThrows) throw Error("App unavailable");
+    } },
     hmSetting: { getScreenType: () => screen, screen_type: { WATCHFACE: "normal" } },
     hmSensor: { id: options.noCompass ? {} : { COMPASS: 0 }, event: { CHANGE: "change" }, createSensor: () => compass },
     hmUI: {
+      showToast(value) { toasts.push(value.text); },
       widget: enumOf("TEXT IMG BUTTON FILL_RECT TEXT_IMG IMG_TIME IMG_LEVEL WIDGET_DELEGATE"),
       align: enumOf("CENTER_H CENTER_V LEFT"), text_style: { NONE: 0 },
       data_type: enumOf(options.noEnvironment ? "HEART BATTERY" : "HEART BATTERY ALTITUDE ALTIMETER SUN_SET WIND HUMIDITY MOON"),
@@ -70,7 +76,7 @@ export function watchfaceHarness(options = {}) {
   const source = readFileSync(new URL("../../watchface/trex2/legacy.js", import.meta.url), "utf8");
   vm.runInNewContext(source.replace(/^import\s[\s\S]*?;\r?\n/gm, ""), context);
   return {
-    widgets, timers, requests, writes, stats, compass, builder, face,
+    widgets, timers, requests, writes, launches, toasts, stats, compass, builder, face,
     now: () => now,
     build: () => face.init_view(),
     tap: () => widgets.find((widget) => widget.type === "BUTTON" && widget.props.y === 7).props.click_func(),

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { watchfaceHarness } from "../scripts/testing/watchface-harness.mjs";
 
 function connected(h, extra = {}) {
@@ -48,6 +49,35 @@ test("center compass stays visible and animated in disconnected, connected and R
   }
   h.delegate().pause_call();
   assert.equal(h.stats.stops, 1);
+});
+
+test("compass tap launches the installed REM mini app's full radar entry page", () => {
+  const app = JSON.parse(readFileSync(new URL("../rem-zepp-sync-trex2/app.json", import.meta.url), "utf8"));
+  const h = watchfaceHarness(); h.build();
+  const target = h.widgets.find((w) => w.type === "BUTTON" && w.props.x === 150);
+  assert.ok(target.props.w >= 100 && target.props.h >= 100);
+  target.props.click_func();
+  assert.deepEqual(h.launches, [{ appid: app.app.appId, url: app.targets.trex2.module.page.pages[0], native: false }]);
+  assert.equal(h.requests.length, 0, "launching does not opt the watch face into REM polling");
+  h.delegate().pause_call();
+  target.props.click_func();
+  assert.equal(h.launches.length, 1, "an inactive face cannot launch another app");
+  assert.equal(h.stats.compassListeners, 0);
+  h.delegate().resume_call();
+  assert.equal(h.stats.compassListeners, 1);
+  assert.equal(h.timers.size, 0);
+});
+
+test("a failed radar launch leaves the face usable and never opens the built-in Compass", () => {
+  const h = watchfaceHarness({ launchThrows: true }); h.build();
+  const target = h.widgets.find((w) => w.type === "BUTTON" && w.props.x === 150);
+  assert.doesNotThrow(() => target.props.click_func());
+  assert.equal(h.launches.length, 1);
+  assert.equal(h.launches[0].native, false);
+  assert.deepEqual(h.toasts, ["Unable to open REM Sync"]);
+  assert.equal(h.stats.compassListeners, 1);
+  const unsupported = watchfaceHarness({ noStartApp: true }); unsupported.build();
+  assert.doesNotThrow(() => unsupported.widgets.find((w) => w.type === "BUTTON" && w.props.x === 150).props.click_func());
 });
 
 test("disconnected tactical data uses large altitude and pressure values", () => {

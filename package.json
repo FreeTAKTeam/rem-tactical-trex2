@@ -9,6 +9,12 @@
   },
   "scripts": {
     "assets": "node scripts/generate-assets.mjs",
+    "watchface:build": "node scripts/build-watchface.mjs build -t \"Amazfit T-Rex 2\"",
+    "watchface:preview": "node scripts/build-watchface.mjs preview -t \"Amazfit T-Rex 2\"",
+    "watchface:bridge": "node scripts/build-watchface.mjs bridge",
+    "radar:assets": "node scripts/generate-radar-assets.mjs",
+    "radar:preview": "node scripts/serve-radar-preview.mjs",
+    "radar:render": "node scripts/render-radar-preview.mjs",
     "test": "node --test test"
   },
   "devDependencies": {

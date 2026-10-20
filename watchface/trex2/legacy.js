@@ -630,27 +630,21 @@ function toggleRemConnection() {
   }
 }
 
-function launchCompassApp() {
-  if (typeof hmApp === "undefined" || typeof hmApp.startApp !== "function") {
+function launchRadarApp() {
+  if (!faceActive || typeof hmApp === "undefined" || typeof hmApp.startApp !== "function") {
     return;
   }
 
   try {
     hmApp.startApp({
-      url: "CompassScreen",
-      native: true,
-    });
-    return;
-  } catch (error) {
-  }
-
-  try {
-    hmApp.startApp({
-      appid: 1,
-      url: "CompassScreen",
-      native: true,
+      appid: 1117630,
+      url: "page/radar/index",
+      native: false,
     });
   } catch (error) {
+    if (typeof hmUI.showToast === "function") {
+      hmUI.showToast({ text: "Unable to open REM Sync" });
+    }
   }
 }
 
@@ -832,7 +826,7 @@ function buildNormal() {
     normal_src: "images/touch-target.png",
     press_src: "images/touch-target.png",
     text: "",
-    click_func: launchCompassApp,
+    click_func: launchRadarApp,
     show_level: hmUI.show_level.ONLY_NORMAL,
   });
   connectedWidgets.push(eventSeverityRail, eventTitleTopText, eventTitleBottomText,

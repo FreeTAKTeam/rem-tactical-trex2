@@ -9,13 +9,15 @@ import { remConfig, normalizeRemConfig } from "../common/remConfig";
 import { mockCompactStatus, nextMockState } from "../common/mockRem";
 import { buildRemStatusUrl, fetchRemWatchStatus } from "../common/remClient";
 import { makeErrorStatus } from "../common/remModel";
+import { createRadarPhoneClient, RADAR_CONFIG_KEY, RADAR_METHOD, RADAR_ERROR } from "../common/radar/phoneClient.js";
 
-const APP_VERSION = "0.1.19";
+const APP_VERSION = "0.1.28";
 const messageBuilder = new MessageBuilder();
 const sideStartedAt = Date.now();
 
 let currentMockState = "normal";
 let lastStatus = null;
+let radarClient = null;
 let lastDiagnostic = {
   fetchStartedAt: "",
   fetchOkAt: "",
@@ -128,6 +130,19 @@ function handleRequest(ctx) {
     return;
   }
 
+  if (payload.method === RADAR_METHOD) {
+    const requestId = payload.requestId;
+    if (!radarClient) {
+      ctx.response({ data: { type: RADAR_ERROR, requestId, code: "PhoneStopped" } });
+      return;
+    }
+    // Ignore every watch-supplied URL, token and configuration field.
+    radarClient.request(requestId).then((data) => ctx.response({ data }), (error) => {
+      ctx.response({ data: { type: RADAR_ERROR, requestId, code: error.code || "TransportUnavailable" } });
+    });
+    return;
+  }
+
   if (
     payload.type === REM_MESSAGE_TYPES.request ||
     payload.method === REM_REQUEST_METHOD
@@ -156,11 +171,20 @@ function handleRequest(ctx) {
 
 AppSideService({
   onInit() {
+    radarClient = createRadarPhoneClient({
+      readConfig: () => typeof settings !== "undefined" && settings.settingsStorage
+        ? settings.settingsStorage.getItem(RADAR_CONFIG_KEY) : null,
+      fetchImpl: typeof fetch === "function" ? fetch : null,
+    });
     messageBuilder.listen(() => {});
     messageBuilder.on("request", handleRequest);
   },
 
   onRun() {},
 
-  onDestroy() {},
+  onDestroy() {
+    if (radarClient) radarClient.stop();
+    radarClient = null;
+    messageBuilder.disConnect();
+  },
 });

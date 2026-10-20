@@ -8,8 +8,8 @@ const appJs = fs.readFileSync("app.js", "utf8");
 const messageTypes = fs.readFileSync("common/messageTypes.js", "utf8");
 
 const checks = [
-  ["app version is 1.3.28", app.app.version.name === "1.3.28"],
-  ["app version code is 46", app.app.version.code === 46],
+  ["app version is 1.3.29", app.app.version.name === "1.3.29"],
+  ["app version code is 47", app.app.version.code === 47],
   ["app targets API 1.0.1", app.runtime.apiVersion.target === "1.0.1"],
   [
     "active module is legacy",
@@ -63,11 +63,12 @@ const checks = [
       legacy.indexOf('src: "images/compass-arrow.png"'),
   ],
   [
-    "compass tap target opens native compass",
-    legacy.includes('url: "CompassScreen"') &&
-      legacy.includes("appid: 1") &&
-      legacy.includes("click_func: launchCompassApp") &&
-      legacy.lastIndexOf("click_func: launchCompassApp") > legacy.indexOf("teamText = textWidget"),
+    "compass tap target opens the REM radar mini app",
+    legacy.includes('url: "page/radar/index"') &&
+      legacy.includes("appid: 1117630") &&
+      legacy.includes("native: false") &&
+      legacy.includes("click_func: launchRadarApp") &&
+      legacy.lastIndexOf("click_func: launchRadarApp") > legacy.indexOf("teamText = textWidget"),
   ],
   [
     "operator call sign is rendered from REM status",

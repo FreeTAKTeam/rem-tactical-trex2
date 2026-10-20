@@ -1,0 +1,43 @@
+:root { color-scheme: dark; --bg:#071012; --line:#213338; --dim:#90a4a9; --ink:#edf3ef; --teal:#65dfd2; --orange:#ff893d; }
+* { box-sizing:border-box; }
+body { margin:0; color:var(--ink); background:radial-gradient(ellipse at 50% 44%,#14292d 0%,#071012 65%); font:15px "Bahnschrift","DIN Alternate",sans-serif; min-height:100vh; }
+header { display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); height:94px; margin:0 4vw; }
+a { color:inherit; text-decoration:none; }
+.wordmark { font-weight:700; font-size:23px; letter-spacing:.15em; }
+.slash { color:var(--orange); margin-right:14px; font-size:35px; font-weight:300; }
+.tag,.eyebrow,.field,.device-meta,.device-caption,footer { font-size:10px; letter-spacing:.17em; }
+.tag { color:var(--dim); }.tag span { padding:0 12px; color:var(--orange); }
+main { display:grid; grid-template-columns:minmax(225px,280px) minmax(350px,1fr) minmax(195px,240px); align-items:center; gap:3vw; max-width:1450px; margin:auto; min-height:calc(100vh - 168px); padding:40px 4vw; }
+.eyebrow { color:var(--teal); margin:0 0 25px; }
+h1 { font-size:clamp(32px,3.1vw,47px); line-height:1.05; font-weight:500; letter-spacing:-.04em; margin:0 0 20px; }
+.intro { color:var(--dim); line-height:1.6; margin:0 0 32px; }
+.field { color:var(--dim); display:block; margin:0 0 10px; }
+select { width:100%; padding:13px 12px; background:#0b1a1d; border:1px solid #3a5158; border-radius:0; color:var(--ink); font:inherit; }
+.heading-label { display:flex; align-items:center; justify-content:space-between; margin-top:25px; }.heading-label .field { margin:0; }
+output { font-variant-numeric:tabular-nums; color:var(--orange); font-size:22px; }
+input[type=range] { width:100%; margin:18px 0; accent-color:var(--orange); }
+button { background:transparent; color:var(--ink); border:1px solid #30454b; cursor:pointer; font:inherit; border-radius:0; min-height:40px; }
+button:hover { color:var(--teal); border-color:var(--teal); background:#12262a; } button:focus-visible,select:focus-visible,#display:focus-visible { outline:2px solid var(--orange); outline-offset:4px; }
+.cardinals { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; }.cardinals button { font-size:10px; letter-spacing:.02em; padding:0 2px; }
+.actions { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; margin-top:18px; }.actions button { font-size:12px; }
+.hardware { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:8px; }.hardware button { min-height:46px; font-size:13px; }
+#display { touch-action:none; }
+.footnote { color:var(--dim); font-size:12px; line-height:1.6; border-top:1px solid var(--line); padding-top:20px; margin-top:26px; }.footnote strong { color:var(--ink); font-weight:400; }
+.device-area { display:flex; flex-direction:column; align-items:center; min-width:0; }
+.device-meta { display:flex; align-items:center; width:min(100%,480px); color:var(--dim); margin-bottom:22px; padding:0 20px; }
+.dimensions { margin-left:auto; }.dot { width:5px; height:5px; border-radius:50%; background:var(--teal); margin-right:10px; }
+.watch { width:min(100%,504px); aspect-ratio:1; border-radius:50%; background:linear-gradient(130deg,#6e797b,#172024 15%,#485457 40%,#070e10 50%,#404b4e 75%,#12191c); padding:9px; box-shadow:0 25px 60px #0009,0 0 0 1px #4a575b,0 0 0 5px #111b1e; position:relative; }
+.watch::before,.watch::after { content:""; position:absolute; left:calc(50% - 2px); width:4px; height:10px; background:var(--orange); top:3px; z-index:2; }.watch::after { top:auto; bottom:3px; }
+.bezel { padding:12px; width:100%; height:100%; border-radius:50%; background:repeating-conic-gradient(#69757b 0deg 0.6deg,#121a1c .6deg 6deg); box-shadow:inset 0 0 0 2px #080c0e; }
+#display { border-radius:50%; overflow:hidden; aspect-ratio:1; background:#030809; position:relative; box-shadow:0 0 0 4px #050b0d; cursor:crosshair; touch-action:manipulation; }
+#display svg { display:block; width:100%; height:100%; }
+.device-caption { display:flex; align-items:center; gap:20px; color:var(--dim); margin-top:30px; font-size:9px; }.cross { color:var(--orange); font-size:20px; }
+#screen-status { min-height:20px; margin:10px 0 0; color:var(--teal); font-size:12px; }
+.legend { align-self:center; }.legend .eyebrow { font-size:9px; }
+.legend-row { display:flex; align-items:flex-start; gap:16px; margin:0 0 25px; }.legend-row p { margin:0; font-size:12px; line-height:1.6; color:var(--dim); }.legend-row strong { color:var(--ink); font-size:13px; font-weight:500; }
+.legend-row i { display:block; width:20px; height:20px; flex-shrink:0; margin-top:5px; }.pointer { clip-path:polygon(50% 0,100% 100%,50% 80%,0 100%); background:var(--orange); }.ring { border:1px solid var(--teal); border-radius:50%; box-shadow:inset 0 0 0 5px #102124; }.contact { border:1px solid white; border-radius:50%; background:#007aff; box-shadow:inset 0 0 0 4px #091416; }.age { border:1px solid #657c83; border-radius:50%; font-style:normal; text-align:center; font-size:13px; color:var(--teal); }
+.native-note { margin:35px 0 0; border-top:1px solid var(--line); padding-top:20px; color:var(--dim); font-size:11px; line-height:1.6; }
+footer { display:flex; align-items:center; justify-content:space-between; gap:20px; min-height:74px; margin:0 4vw; border-top:1px solid var(--line); color:var(--dim); font-size:9px; }footer a { color:var(--teal); }
+@media(min-width:1500px) { main { gap:65px; } }
+@media(max-width:1050px) { main { grid-template-columns:240px minmax(320px,1fr); gap:35px; }.legend { grid-column:1/-1; display:grid; grid-template-columns:repeat(4,1fr); gap:20px; }.legend .eyebrow,.native-note { grid-column:1/-1; margin:0; }.legend-row { margin-bottom:0; } }
+@media(max-width:700px) { header { height:74px; }.wordmark { font-size:17px; }.tag { font-size:8px; }.tag span { padding:0 3px; }main { display:flex; flex-direction:column; gap:35px; padding:28px 6vw; }.controls { width:100%; }h1 { font-size:35px; }h1 br { display:none; }h1 br::after { content:" "; }.eyebrow { margin-bottom:15px; }.intro { margin-bottom:20px; }.device-area { order:-1; width:100%; }.watch { max-width:440px; }.legend { display:grid; grid-template-columns:1fr 1fr; }.device-meta { padding:0 3px; }.device-caption { font-size:8px; gap:12px; }footer { flex-wrap:wrap; padding:20px 0; font-size:8px; gap:15px; }.native-note { margin-top:10px; } }

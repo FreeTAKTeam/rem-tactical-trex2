@@ -1,6 +1,6 @@
 import "../../shared/device-polyfill";
-import ui from "@zos/ui";
-import { px } from "@zos/utils";
+import { ui, acquireInput, resetLayerOffset, KEY_UP, KEY_DOWN, KEY_SELECT, KEY_EVENT_CLICK } from "../../common/deviceRuntime.js";
+import { fromNativePanel, toNativePanel } from "../../common/radar/widgetRenderer.js";
 import {
   REM_DIAGNOSTICS_RESPONSE,
   REM_MESSAGE_TYPES,
@@ -10,7 +10,7 @@ import { remConfig } from "../../common/remConfig";
 import { makeErrorStatus } from "../../common/remModel";
 import { COLORS, LAYOUT } from "./index.style";
 
-const APP_VERSION = "0.1.19";
+const APP_VERSION = "0.1.28";
 const BRIDGE_WATCHDOG_MS = 7000;
 
 let widgets = {};
@@ -26,6 +26,9 @@ let pageGeneration = 0;
 let requestGeneration = 0;
 let pageMessageBuilder = null;
 let callHandler = null;
+let releaseInput = null;
+let ownedWidgets = [];
+const widgetValues = new Map();
 
 function isCurrentPage(generation) {
   return pageActive && generation === pageGeneration &&
@@ -48,11 +51,20 @@ function destroyPage() {
   }
   callHandler = null;
   pageMessageBuilder = null;
+  const ownedInput = releaseInput && releaseInput();
+  releaseInput = null;
+  if (ownedInput) {
+    if (typeof ui.setScrollView === "function") ui.setScrollView(false, px(454), 1, true);
+    resetLayerOffset();
+  }
+  if (typeof ui.deleteWidget === "function") for (const widget of ownedWidgets) ui.deleteWidget(widget);
+  ownedWidgets = [];
+  widgetValues.clear();
   widgets = {};
 }
 
 function textWidget({ x, y, w, h, text, color, size, align }) {
-  return ui.createWidget(ui.widget.TEXT, {
+  const widget = ui.createWidget(ui.widget.TEXT, {
     x: px(x),
     y: px(y),
     w: px(w),
@@ -62,16 +74,19 @@ function textWidget({ x, y, w, h, text, color, size, align }) {
     text_size: px(size),
     align_h: align || ui.align.LEFT,
     align_v: ui.align.CENTER_V,
-    text_style: ui.text_style.NONE,
+    text_style: h > 50 ? ui.text_style.WRAP : ui.text_style.NONE,
   });
+  ownedWidgets.push(widget);
+  return widget;
 }
 
 function setText(widget, text, color) {
-  widget &&
-    widget.setProperty(ui.prop.MORE, {
-      text: String(text === undefined || text === null || text === "" ? "--" : text),
-      color,
-    });
+  if (!widget) return;
+  const value = String(text === undefined || text === null || text === "" ? "--" : text);
+  const previous = widgetValues.get(widget);
+  if (previous && previous.text === value && previous.color === color) return;
+  widgetValues.set(widget, { text: value, color });
+  widget.setProperty(ui.prop.MORE, { text: value, color });
 }
 
 function valueColor(status) {
@@ -106,7 +121,7 @@ function renderStatus(status) {
   setText(widgets.eventTitle, compactValue(statusValue(status, "latestEventTitle"), 28), COLORS.white);
   setText(widgets.eventMeta, compactValue(statusValue(status, "latestEventMeta"), 32), COLORS.dim);
   setText(widgets.position, compactValue(`POS ${status.position || "--"}`, 32), COLORS.white);
-  setText(widgets.sync, compactValue(`SYNC ${status.lastSyncAge || "--"}  FETCH ${lastFetchTime}`, 32), COLORS.dim);
+  setText(widgets.sync, `SYNC ${status.lastSyncAge || "--"}`, COLORS.dim);
   setText(widgets.side, compactValue(`SIDE ${lastSideState}  ${lastPayload}`, 30), COLORS.dim);
   setText(widgets.error, compactValue(`ERR ${lastApiError || "--"}`, 34), lastApiError === "--" ? COLORS.dim : COLORS.orange);
 }
@@ -263,21 +278,21 @@ Page({
     pageActive = true;
     const generation = pageGeneration;
     pageMessageBuilder = getApp()._options.globalData.messageBuilder;
-    ui.createWidget(ui.widget.FILL_RECT, {
+    ownedWidgets.push(ui.createWidget(ui.widget.FILL_RECT, {
       x: 0,
       y: 0,
       w: px(454),
-      h: px(454),
+      h: px(454 * 4),
       color: COLORS.background,
-    });
+    }));
 
-    ui.createWidget(ui.widget.IMG, {
+    ownedWidgets.push(ui.createWidget(ui.widget.IMG, {
       x: px(LAYOUT.icon.x),
       y: px(LAYOUT.icon.y),
       w: px(LAYOUT.icon.w),
       h: px(LAYOUT.icon.h),
       src: "icon.png",
-    });
+    }));
 
     textWidget({
       ...LAYOUT.header,
@@ -295,7 +310,6 @@ Page({
     widgets.banner = textWidget({ ...LAYOUT.banner, text: "--", color: COLORS.orange, align: ui.align.CENTER_H });
     widgets.primary = textWidget({ ...LAYOUT.primary, text: "--", color: COLORS.white, align: ui.align.CENTER_H });
     widgets.team = textWidget({ ...LAYOUT.team, text: "--", color: COLORS.white, align: ui.align.CENTER_H });
-    textWidget({ ...LAYOUT.eventLabel, text: "LATEST EVENT", color: COLORS.green, align: ui.align.CENTER_H });
     widgets.eventTitle = textWidget({ ...LAYOUT.eventTitle, text: "--", color: COLORS.white, align: ui.align.CENTER_H });
     widgets.eventMeta = textWidget({ ...LAYOUT.eventMeta, text: "--", color: COLORS.dim, align: ui.align.CENTER_H });
     widgets.position = textWidget({ ...LAYOUT.position, text: "--", color: COLORS.white, align: ui.align.CENTER_H });
@@ -303,19 +317,26 @@ Page({
     widgets.side = textWidget({ ...LAYOUT.side, text: "--", color: COLORS.dim, align: ui.align.CENTER_H });
     widgets.error = textWidget({ ...LAYOUT.error, text: "--", color: COLORS.orange, align: ui.align.CENTER_H });
 
-    ui.createWidget(ui.widget.BUTTON, {
-      x: px(0),
-      y: px(0),
-      w: px(454),
-      h: px(454),
-      text: "",
-      normal_src: "transparent-touch.png",
-      press_src: "transparent-touch.png",
-      click_func: () => {
-        if (isCurrentPage(generation)) {
-          requestStatus();
-        }
+    for (const [panel, title] of [[1, "LATEST EVENT"], [2, "POSITION"], [3, "DIAGNOSTICS"]]) {
+      textWidget({ x: 75, y: panel * 454 + 40, w: 304, h: 40, text: title, color: COLORS.white, size: 24, align: ui.align.CENTER_H });
+    }
+    for (let panel = 0; panel < 4; panel++) {
+      textWidget({ x: 77, y: panel * 454 + 381, w: 300, h: 28, text: `UP / DOWN   ${panel + 1} / 4`, color: COLORS.dim, size: 16, align: ui.align.CENTER_H });
+      textWidget({ x: 77, y: panel * 454 + 340, w: 300, h: 28, text: "SELECT refreshes · BACK radar", color: COLORS.dim, size: 17, align: ui.align.CENTER_H });
+    }
+    resetLayerOffset();
+    if (typeof ui.setScrollView === "function") ui.setScrollView(true, px(454), 4, true);
+    if (typeof ui.setLayerScrolling === "function") ui.setLayerScrolling(false);
+    releaseInput = acquireInput({
+      key: (key, event) => {
+        if (!isCurrentPage(generation) || event !== KEY_EVENT_CLICK) return false;
+        if (key === KEY_SELECT) { requestStatus(); return true; }
+        if (key !== KEY_UP && key !== KEY_DOWN) return false;
+        const panel = typeof ui.getScrollCurrentPage === "function" ? fromNativePanel(ui.getScrollCurrentPage()) || 0 : 0;
+        if (typeof ui.scrollToPage === "function") ui.scrollToPage(toNativePanel(Math.max(0, Math.min(3, panel + (key === KEY_UP ? -1 : 1)))), false);
+        return true;
       },
+      gesture: () => false,
     });
 
     const messageBuilder = pageMessageBuilder;

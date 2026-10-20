@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>REM RADAR · T-Rex 2 app</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./preview.css">
+</head>
+<body>
+  <header><a class="wordmark" href="./"><span class="slash">/</span> REM RADAR</a><span class="tag">T-REX 2 <span>/</span> MINI APP</span></header>
+  <main>
+    <aside class="controls">
+      <p class="eyebrow">INTERFACE REVIEW / 01</p>
+      <h1>Keep your <br>surroundings <br>in sight.</h1>
+      <p class="intro">Radar on your wrist.<br>Four physical buttons. Swipe to read.</p>
+      <label class="field" for="scenario">VIEW / CONDITION</label>
+      <select id="scenario"></select>
+      <div class="heading-label"><label class="field" for="heading">WRIST HEADING</label><output id="heading-value">045°</output></div>
+      <input id="heading" type="range" min="0" max="359" value="45" aria-label="Demo wrist heading in degrees">
+      <div class="cardinals" aria-label="Quarter turn fixtures"><button data-heading="0">N / 000°</button><button data-heading="90">E / 090°</button><button data-heading="180">S / 180°</button><button data-heading="270">W / 270°</button></div>
+      <label class="field">PHYSICAL BUTTONS</label>
+      <div class="hardware"><button data-key="up">UP</button><button data-key="select">SELECT</button><button data-key="down">DOWN</button><button id="back">BACK</button></div>
+      <div class="actions"><button id="age">Age +15s</button><button id="reset">Reset</button></div>
+      <p class="footnote">Sample contacts and heading. The watch opens with no data; <strong>Try demo</strong> is an explicit action.</p>
+    </aside>
+    <section class="device-area" aria-label="T-Rex 2 display preview">
+      <div class="device-meta"><span class="dot"></span> ZEPP APP <span class="dimensions">454 × 454</span></div>
+      <div class="watch"><div class="bezel"><div id="display" tabindex="0" aria-label="Watch display. Up and down scroll, Enter selects, Escape goes back. Swipe vertically to read."></div></div></div>
+      <div class="device-caption"><span>FIXED POINTER</span><span class="cross">+</span><span>ROTATING WORLD</span></div>
+      <p id="screen-status" aria-live="polite"></p>
+    </section>
+    <aside class="legend">
+      <p class="eyebrow">READING THE RADAR</p>
+      <div class="legend-row"><i class="pointer"></i><p><strong>Your wrist, forward.</strong><br>The triangle and viewing cone stay at 12 o’clock.</p></div>
+      <div class="legend-row"><i class="ring"></i><p><strong>One geographic reference.</strong><br>Compass and contacts rotate together as the heading changes.</p></div>
+      <div class="legend-row"><i class="contact"></i><p><strong>REM colours stay intact.</strong><br>A separate outline marks selection and stale data.</p></div>
+      <div class="legend-row"><i class="age">s</i><p><strong>Room to read.</strong><br>UP / DOWN scroll. SELECT opens. BACK returns. Swipe vertically through details.</p></div>
+      <p class="native-note">This preview renders the same scene descriptions as the native Zepp page. Firmware fonts and touch events still require device validation.</p>
+    </aside>
+  </main>
+  <footer><span>REM / READ-ONLY RADAR</span><span>UI PREVIEW · SAMPLE DATA</span><a href="https://github.com/FreeTAKTeam/rem-tactical-trex2/issues/2">ISSUE 02 ↗</a></footer>
+  <script type="module" src="./preview.js"></script>
+</body>
+</html>

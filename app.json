@@ -5,8 +5,8 @@
     "appName": "REM Tactical",
     "appType": "watchface",
     "version": {
-      "code": 46,
-      "name": "1.3.28"
+      "code": 47,
+      "name": "1.3.29"
     },
     "icon": "icon.png",
     "cover": [

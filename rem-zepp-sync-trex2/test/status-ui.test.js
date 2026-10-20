@@ -7,10 +7,12 @@ const statusStyle = fs.readFileSync("page/status/index.style.js", "utf8");
 const appJson = JSON.parse(fs.readFileSync("app.json", "utf8"));
 const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-test("status page does not draw an opaque full-screen button over the UI", () => {
+test("status page leaves native scrolling unobstructed and uses physical SELECT to refresh", () => {
   assert.doesNotMatch(statusPage, /normal_color:\s*COLORS\.background/);
   assert.doesNotMatch(statusPage, /press_color:\s*COLORS\.background/);
-  assert.match(statusPage, /normal_src:\s*"transparent-touch\.png"/);
+  assert.doesNotMatch(statusPage, /widget\.BUTTON|transparent-touch/);
+  assert.match(statusPage, /key === KEY_SELECT/);
+  assert.match(statusPage, /setScrollView\(true, px\(454\), 4, true\)/);
 });
 
 test("status page does not run the failed shared-storage proof", () => {

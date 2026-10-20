@@ -35,19 +35,14 @@ test("REM Sync companion declares BLE permission required by MessageBuilder brid
   assert.ok(appJson.permissions.includes("device:os.ble"));
 });
 
-test("REM Sync companion uses fixed app id for MessageBuilder handshake", async () => {
-  const source = await readFile(path.join(projectRoot, "app.js"), "utf8");
-
-  assert.match(source, /REM_SYNC_APP_ID/);
-  assert.doesNotMatch(source, /getPackageInfo/);
-});
-
 test("REM Sync companion injects the Zepp BLE module into MessageBuilder", async () => {
   const appSource = await readFile(path.join(projectRoot, "app.js"), "utf8");
   const messageSource = await readFile(path.join(projectRoot, "shared", "message.js"), "utf8");
 
-  assert.match(appSource, /import \* as ble from "@zos\/ble"/);
-  assert.match(appSource, /ble,\s*}\)/);
+  const runtimeSource = await readFile(path.join(projectRoot, "common", "deviceRuntime.js"), "utf8");
+  assert.match(appSource, /from "\.\/common\/deviceRuntime\.js"/);
+  assert.match(runtimeSource, /export const ble = typeof hmBle/);
+  assert.match(appSource, /new MessageBuilder\(\{ appId, ble \}\)/);
   assert.match(messageSource, /this\.ble = ble \|\|/);
   assert.match(messageSource, /this\.ble\.createConnect/);
   assert.match(messageSource, /this\.ble\.send/);

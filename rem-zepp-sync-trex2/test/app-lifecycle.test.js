@@ -7,6 +7,8 @@ import * as messageTypes from "../common/messageTypes.js";
 import { remConfig } from "../common/remConfig.js";
 import { makeErrorStatus } from "../common/remModel.js";
 import { COLORS, LAYOUT } from "../page/status/index.style.js";
+import { createDisplaySession } from "../common/displaySession.js";
+import { fromNativePanel, toNativePanel } from "../common/radar/widgetRenderer.js";
 
 // Execute the production lifecycle hooks with device imports supplied by the
 // harness. Use the real EventBus so listener ownership matches the bridge.
@@ -41,6 +43,8 @@ class FakeBridge extends EventBus {
 function createPageHarness(bridge = new FakeBridge()) {
   let page;
   let nextTimer = 0;
+  let input;
+  let nativePanel = 1;
   const timers = new Map();
   const createdWidgets = [];
   const globalData = { messageBuilder: bridge };
@@ -48,7 +52,9 @@ function createPageHarness(bridge = new FakeBridge()) {
     widget: { TEXT: "text", BUTTON: "button" },
     prop: { MORE: "more" },
     align: {},
-    text_style: {},
+    text_style: { WRAP: "wrap" },
+    setScrollView() {}, setLayerScrolling() {},
+    scrollToPage(index) { nativePanel = index; }, getScrollCurrentPage() { return nativePanel; },
     createWidget(type, options) {
       const widget = {
         type, options, writes: [],
@@ -60,7 +66,9 @@ function createPageHarness(bridge = new FakeBridge()) {
   };
   loadDeviceModule("../page/status/index.js", {
     ...messageTypes, remConfig, makeErrorStatus, COLORS, LAYOUT, ui,
-    px: (value) => value,
+    px: (value) => value, resetLayerOffset() {}, fromNativePanel, toNativePanel,
+    KEY_UP: "up", KEY_DOWN: "down", KEY_SELECT: "select", KEY_EVENT_CLICK: "click",
+    acquireInput(callbacks) { input = callbacks; let active = true; return () => { if (!active) return false; active = false; return true; }; },
     getApp: () => ({ _options: { globalData } }),
     Page: (options) => { page = options; },
     setTimeout(callback, delay) {
@@ -73,7 +81,8 @@ function createPageHarness(bridge = new FakeBridge()) {
   });
   return {
     page, bridge, globalData, timers, createdWidgets,
-    click: () => createdWidgets.findLast((widget) => widget.type === "button").options.click_func(),
+    click: () => input.key("select", "click"),
+    captureSelect: () => { const callback = input.key; return () => callback("select", "click"); },
     writes: () => createdWidgets.reduce((count, widget) => count + widget.writes.length, 0),
     text: () => createdWidgets.flatMap((widget) => widget.writes.map((write) => write.text)).join("\n"),
     expire() {
@@ -165,7 +174,7 @@ for (const outcome of ["resolve", "reject"]) {
     const h = createPageHarness();
     h.page.build();
     const oldCall = h.bridge.map.get("call")[0];
-    const oldClick = h.createdWidgets.find((widget) => widget.type === "button").options.click_func;
+    const oldClick = h.captureSelect();
     const oldTimeout = [...h.timers.values()][0].callback;
     h.page.onDestroy();
     h.page.build();
@@ -246,15 +255,18 @@ test("missing bridge preserves offline behavior without scheduling work", () => 
 test("app connects once, disconnects once, and creates a fresh bridge on recreation", () => {
   let app;
   const ble = {};
+  const manifest = JSON.parse(readFileSync(new URL("../app.json", import.meta.url), "utf8"));
   loadDeviceModule("../app.js", {
-    ble, ...messageTypes, MessageBuilder: FakeBridge,
+    ble, ...messageTypes, MessageBuilder: FakeBridge, createDisplaySession,
+    getPackageInfo: () => ({ appId: manifest.app.appId }),
+    console: { log() {} },
     App: (options) => { app = options; },
   });
   assert.equal(app.globalData.messageBuilder, null);
   app.onDestroy();
   app.onCreate();
   const first = app.globalData.messageBuilder;
-  assert.equal(first.options.appId, messageTypes.REM_SYNC_APP_ID);
+  assert.equal(first.options.appId, manifest.app.appId);
   assert.equal(first.options.ble, ble);
   app.onCreate();
   assert.equal(first.connects, 1);
@@ -265,5 +277,19 @@ test("app connects once, disconnects once, and creates a fresh bridge on recreat
   app.onCreate();
   assert.notEqual(app.globalData.messageBuilder, first);
   assert.equal(app.globalData.messageBuilder.connects, 1);
+  app.onDestroy();
+});
+
+test("app routes the handshake with the runtime package ID, including remapped previews", () => {
+  let app;
+  const runtimeAppId = 2222222;
+  loadDeviceModule("../app.js", {
+    ble: {}, MessageBuilder: FakeBridge, createDisplaySession,
+    getPackageInfo: () => ({ appId: runtimeAppId }),
+    console: { log() {} },
+    App: (options) => { app = options; },
+  });
+  app.onCreate();
+  assert.equal(app.globalData.messageBuilder.options.appId, runtimeAppId);
   app.onDestroy();
 });

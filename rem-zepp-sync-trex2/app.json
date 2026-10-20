@@ -5,24 +5,25 @@
     "appName": "REM Sync",
     "appType": "app",
     "version": {
-      "code": 20,
-      "name": "0.1.19"
+      "code": 29,
+      "name": "0.1.28"
     },
     "icon": "icon.png",
     "cover": [
       "preview.png"
     ],
     "vender": "Corvo",
-    "description": "REM northbound API sync companion for Amazfit T-Rex 2"
+    "description": "Read-only REM radar and status companion for Amazfit T-Rex 2"
   },
   "permissions": [
-    "device:os.ble"
+    "device:os.ble",
+    "device:os.compass"
   ],
   "runtime": {
     "apiVersion": {
-      "compatible": "2.1",
-      "target": "2.1",
-      "minVersion": "2.1"
+      "compatible": "1.0.0",
+      "target": "1.0.1",
+      "minVersion": "1.0.0"
     }
   },
   "targets": {
@@ -30,11 +31,15 @@
       "module": {
         "page": {
           "pages": [
+            "page/radar/index",
             "page/status/index"
           ]
         },
         "app-side": {
           "path": "app-side/index"
+        },
+        "setting": {
+          "path": "setting/index"
         }
       },
       "platforms": [

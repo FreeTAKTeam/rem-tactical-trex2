@@ -5,7 +5,7 @@ let globalNS = getGlobal();
 
 if (typeof setTimeout === "undefined" && isHmTimerDefined()) {
   globalNS.clearTimeout = function clearTimeout(timerRef) {
-    timerRef && timer.stopTimer(timerRef);
+    if (timerRef !== undefined && timerRef !== null) timer.stopTimer(timerRef);
   };
 
   globalNS.setTimeout = function setTimeout(func, ns) {
@@ -23,7 +23,7 @@ if (typeof setTimeout === "undefined" && isHmTimerDefined()) {
   };
 
   globalNS.clearImmediate = function clearImmediate(timerRef) {
-    timerRef && timer.stopTimer(timerRef);
+    if (timerRef !== undefined && timerRef !== null) timer.stopTimer(timerRef);
   };
 
   globalNS.setImmediate = function setImmediate(func) {
@@ -41,7 +41,7 @@ if (typeof setTimeout === "undefined" && isHmTimerDefined()) {
   };
 
   globalNS.clearInterval = function clearInterval(timerRef) {
-    timerRef && timer.stopTimer(timerRef);
+    if (timerRef !== undefined && timerRef !== null) timer.stopTimer(timerRef);
   };
 
   globalNS.setInterval = function setInterval(func, ms) {

@@ -1,6 +1,7 @@
 import './buffer'
 import './logger'
 import { EventBus } from './event'
+import { SessionMgr, MESSAGE_LIMITS, validateChunk } from './reassembly'
 import { Deferred } from './defer'
 import { json2Buf, buf2Json, buf2hex, bin2hex, bin2json, str2buf } from './data'
 import { isHmBleDefined, isHmAppDefined } from './js-module'
@@ -76,108 +77,6 @@ export function getTimestamp(t = Date.now()) {
   return t % 10000000
 }
 
-class Session extends EventBus {
-  constructor(id, type, ctx) {
-    super()
-    this.id = id
-    this.type = type // payloadType
-    this.ctx = ctx
-    this.tempBuf = null
-    this.chunks = []
-    this.count = 0
-    this.finishChunk = null
-  }
-
-  addChunk(payload) {
-    if (payload.opCode === MessagePayloadOpCode.Finished) {
-      this.count = payload.seqId
-      this.finishChunk = payload
-    }
-
-    if (payload.payloadLength !== payload.payload.byteLength) {
-      // logger.error('receive chunk data length error, expect %d but %d', payload.payloadLength, payload.payload.byteLength)
-      this.emit('error', Error(`receive chunk data length error, expect ${payload.payloadLength} but ${payload.payload.byteLength}`))
-      return
-    }
-
-    this.chunks.push(payload)
-    this.checkIfReceiveAllChunks()
-  }
-
-  checkIfReceiveAllChunks() {
-    if (this.count !== this.chunks.length) return
-
-    for (let i = 1; i <= this.count; i++) {
-      const chunk = this.chunks.find(c => c.seqId === i)
-
-      if (!chunk) {
-        this.releaseBuf()
-        this.emit('error', Error('receive data error'))
-        return
-      }
-
-      const buf = chunk.payload
-      this.tempBuf = this.tempBuf ? Buffer.concat([this.tempBuf, buf]) : buf
-    }
-
-    if (!this.finishChunk) return
-
-    this.finishChunk.payload = this.tempBuf
-    this.finishChunk.payloadLength = this.finishChunk.payload.byteLength
-
-    if (this.finishChunk.totalLength !== this.finishChunk.payloadLength) {
-      // logger.error('receive full data length error, expect %d but %d', this.finishChunk.payloadLength, this.finishChunk.payload.byteLength)
-      this.emit('error', Error(`receive full data length error, expect ${this.finishChunk.payloadLength} but ${this.finishChunk.payload.byteLength}`))
-      return
-    }
-
-    this.emit('data', this.finishChunk)
-  }
-
-  getLength() {
-    return this.tempBufLength
-  }
-  releaseBuf() {
-    this.tempBuf = null
-    this.chunks = []
-    this.finishChunk = null
-    this.count = 0
-  }
-}
-
-class SessionMgr {
-  constructor() {
-    this.sessions = new Map()
-  }
-
-  key(session) {
-    return `${session.id}:${session.type}`
-  }
-
-  newSession(id, type, ctx) {
-    const newSession = new Session(id, type, ctx)
-    this.sessions.set(this.key(newSession), newSession)
-    return newSession
-  }
-
-  destroy(session) {
-    session.releaseBuf()
-    this.sessions.delete(this.key(session))
-  }
-
-  has(id, type) {
-    return this.sessions.has(this.key({ id, type }))
-  }
-
-  getById(id, type) {
-    return this.sessions.get(this.key({ id, type }))
-  }
-
-  clear() {
-    this.sessions.clear()
-  }
-}
-
 export class MessageBuilder extends EventBus {
   constructor({ appId = 0, appDevicePort = 20, appSidePort = 0, ble = undefined } = {
     appId: 0,
@@ -201,6 +100,7 @@ export class MessageBuilder extends EventBus {
     this.sessionMgr = new SessionMgr()
     this._deviceConnected = false
     this._disconnected = false
+    this._connectionGeneration = 0
     this._pendingRequests = new Map()
     this._requestHandshake = null
     this._requestHandshakeReady = false
@@ -275,6 +175,7 @@ export class MessageBuilder extends EventBus {
     const wasConnected = this._deviceConnected
     this._deviceConnected = false
     this._disconnected = true
+    this._connectionGeneration += 1
     this._onRequestError(Error('Disconnected.'))
     this.off('message', this._onDeviceMessage)
     this.sessionMgr.clear()
@@ -488,6 +389,11 @@ export class MessageBuilder extends EventBus {
     const dataSize = this.chunkSize
     const headerSize = 0
     const userDataLength = dataBin.byteLength
+    if (!Number.isInteger(dataSize) || dataSize < 1 || dataSize > MESSAGE_LIMITS.chunkBytes ||
+        userDataLength < 1 || userDataLength > MESSAGE_LIMITS.bytes ||
+        Math.ceil(userDataLength / dataSize) > MESSAGE_LIMITS.chunks) {
+      throw Error('Message payload exceeds transport limits.')
+    }
 
     let offset = 0
     const _buf = Buffer.alloc(dataSize)
@@ -700,6 +606,9 @@ export class MessageBuilder extends EventBus {
   }
 
   readPayload(arrayBuf) {
+    if (!arrayBuf || arrayBuf.byteLength < 67 || arrayBuf.byteLength > 66 + MESSAGE_LIMITS.chunkBytes) {
+      throw Error('Invalid message frame length.')
+    }
     const buf = Buffer.from(arrayBuf)
     let offset = 0
 
@@ -784,6 +693,10 @@ export class MessageBuilder extends EventBus {
 
   onFragmentData(bin) {
     if (this.isDevice && !this._deviceConnected) return
+    if (!bin || bin.byteLength < 16 || bin.byteLength > 82 + MESSAGE_LIMITS.chunkBytes) {
+      this.emit('error', Error('Invalid transport frame length.'))
+      return
+    }
     const data = this.readBin(bin)
     this.emit('raw', bin)
 
@@ -818,18 +731,41 @@ export class MessageBuilder extends EventBus {
   }
 
   onMessage(messagePayload) {
-    const payload = this.readPayload(messagePayload)
+    if (this._disconnected) return
+    let payload
+    try {
+      payload = this.readPayload(messagePayload)
+    } catch (error) {
+      this.emit('error', error)
+      return
+    }
     let session = this.sessionMgr.getById(payload.traceId, payload.payloadType)
+    if (session && session.spanId !== payload.spanId) return
+    try {
+      validateChunk(payload, this.chunkSize)
+    } catch (error) {
+      if (session) this.sessionMgr.destroy(session)
+      this.emit('error', error)
+      return
+    }
 
     if (!session) {
-      session = this.sessionMgr.newSession(payload.traceId, payload.payloadType, this)
+      try {
+        session = this.sessionMgr.newSession(payload.traceId, payload.payloadType, this, payload.spanId)
+      } catch (error) {
+        this.emit('error', error)
+        return
+      }
+      if (!session) return
 
       session.on('data', (fullPayload) => {
-        if (fullPayload.opCode === MessagePayloadOpCode.Finished) {
+        try {
           if (fullPayload.payloadType === MessagePayloadType.Request) {
+            const generation = this._connectionGeneration
             this.emit('request', {
               request: fullPayload,
               response: ({ data }) => {
+                if (this._disconnected || generation !== this._connectionGeneration) return
                 this.response({ requestId: fullPayload.traceId, data })
               },
             })
@@ -840,6 +776,7 @@ export class MessageBuilder extends EventBus {
           }
 
           this.emit('data', fullPayload)
+        } finally {
           this.sessionMgr.destroy(session)
         }
       })
@@ -887,6 +824,7 @@ export class MessageBuilder extends EventBus {
       if (timer !== null) clearTimeout(timer)
       timer = null
       this._pendingRequests.delete(requestId)
+      this.sessionMgr.cancel(requestId, MessagePayloadType.Response)
       if (this._pendingRequests.size === 0) {
         // Replace EventBus's arrays instead of splicing the array an active
         // emit is walking, so unrelated listeners still receive this event.
@@ -901,6 +839,9 @@ export class MessageBuilder extends EventBus {
       if (succeeded) defer.resolve(value)
       else defer.reject(value)
     }
+    // The page owns this request, while the bridge may also serve Status.
+    // Cancel only its deadline, fragments and listeners on page teardown.
+    defer.promise.cancel = () => finish(false, Error('Cancelled.'))
     const request = {
       reject: (error) => finish(false, error),
       respond: (payload) => {
