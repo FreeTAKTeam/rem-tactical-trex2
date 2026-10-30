@@ -11,7 +11,7 @@ import { makeErrorStatus } from "../../common/remModel";
 import { COLORS, LAYOUT } from "./index.style";
 import { activateDisplayPage } from "../../common/displaySession.js";
 
-const APP_VERSION = "0.1.31";
+const APP_VERSION = "0.1.32";
 const BRIDGE_WATCHDOG_MS = 7000;
 
 let widgets = {};

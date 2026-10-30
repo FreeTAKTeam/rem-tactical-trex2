@@ -61,6 +61,7 @@ export function createRadarPhoneClient({ readConfig, fetchImpl, setTimer = setTi
   let pending = null;
   let lastConfig = null;
   let channel = channelId();
+  let sourceSession = null;
   let generation = 0;
   function config() { try { return readConfig(); } catch { throw fail("NotConfigured"); } }
   function request(requestId) {
@@ -72,7 +73,7 @@ export function createRadarPhoneClient({ readConfig, fetchImpl, setTimer = setTi
       raw = config();
       settings = parsePhoneConfig(raw);
     } catch (error) { return Promise.reject(error); }
-    if (raw !== lastConfig) { lastConfig = raw; generation++; channel = channelId(); }
+    if (raw !== lastConfig) { lastConfig = raw; generation++; channel = channelId(); sourceSession = null; }
     if (pending) return Promise.reject(fail("Busy"));
     if (typeof fetchImpl !== "function") return Promise.reject(fail("TransportUnavailable"));
     const requestGeneration = generation;
@@ -89,7 +90,13 @@ export function createRadarPhoneClient({ readConfig, fetchImpl, setTimer = setTi
         try { current = active && generation === requestGeneration && config() === raw; } catch { /* Revoked. */ }
         if (!current) reject(fail("ConfigurationChanged"));
         else if (error) reject(error);
-        else resolve({ type: RADAR_RESPONSE, requestId, channelId: channel, snapshot });
+        else {
+          // A validated authenticated source restart starts a fresh watch channel,
+          // even when the outage completed between polls. Credentials stay on the phone.
+          if (sourceSession !== null && sourceSession !== snapshot.sessionId) channel = channelId();
+          sourceSession = snapshot.sessionId;
+          resolve({ type: RADAR_RESPONSE, requestId, channelId: channel, snapshot });
+        }
       }
       job.timer = setTimer(() => {
         job.timer = null;

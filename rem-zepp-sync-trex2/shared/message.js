@@ -150,7 +150,7 @@ export class MessageBuilder extends EventBus {
     this.appSidePort = 0
     this._disconnected = false
     this._deviceConnected = true
-    const shakeTask = this.shakeTask
+    const connectionGeneration = this._connectionGeneration
     this._watchRequestHandshake()
     this.on('message', this._onDeviceMessage)
 
@@ -158,7 +158,7 @@ export class MessageBuilder extends EventBus {
       this.ble &&
         this.ble.createConnect((index, data, size) => {
           // A callback from a closed connection must not revive it after reconnect.
-          if (!this._deviceConnected || this.shakeTask !== shakeTask) return
+          if (!this._deviceConnected || this._connectionGeneration !== connectionGeneration) return
           this.onFragmentData(data)
         })
       this.sendShake()
@@ -806,6 +806,17 @@ export class MessageBuilder extends EventBus {
     })
   }
 
+  _recoverRequestHandshake(handshake) {
+    if (!this.isDevice || !this._deviceConnected || this._disconnected ||
+        this.waitingShakePromise !== handshake) return
+    // Phone restarts can replace the Side Service port. Rediscover it on the
+    // next request cycle, without replaying any already-sent request.
+    this.appSidePort = 0
+    this._resetHandshake()
+    this._watchRequestHandshake()
+    try { this.sendShake() } catch (error) { /* Retry at a later request deadline. */ }
+  }
+
   request(data, opts) {
     const { timeout = 60000 } = opts || {}
     const defer = Deferred()
@@ -815,6 +826,7 @@ export class MessageBuilder extends EventBus {
     }
 
     const requestId = genTraceId()
+    const handshake = this.waitingShakePromise
     let timer = null
     let settled = false
     let sent = false
@@ -870,7 +882,10 @@ export class MessageBuilder extends EventBus {
     this._pendingRequests.set(requestId, request)
     // The deadline covers both handshake and response, and is always cleared
     // on settlement (including synchronous send/JSON failures and disconnect).
-    timer = setTimeout(() => finish(false, Error(`Timed out in ${timeout}ms.`)), timeout)
+    timer = setTimeout(() => {
+      finish(false, Error(`Timed out in ${timeout}ms.`))
+      this._recoverRequestHandshake(handshake)
+    }, timeout)
     this._watchRequestHandshake()
     if (this._requestHandshakeReady) this.waitingShakePromise.then(request.start)
     return defer.promise

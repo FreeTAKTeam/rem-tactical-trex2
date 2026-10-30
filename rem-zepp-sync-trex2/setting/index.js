@@ -7,7 +7,7 @@ AppSettingsPage({
     const draft = { enabled: saved.enabled === true, port: String(saved.port || 29863), token: saved.token || "" };
     return View({ style: { padding: "20px" } }, [
       Section({ title: "REM radar", description: "Pair with Watch Status Server in REM on this phone." }, [
-        Text({ paragraph: true }, "Grant local-position and nearby-marker access in REM, enable radar, then copy its pairing code here. The code stays in Zepp on this phone and expires after eight hours."),
+        Text({ paragraph: true }, "Enable radar in REM and copy its pairing code here once. With Watch Status 1.1.4 or later, pairing survives REM and phone restarts and reconnects automatically. Use Forget pairing in REM to revoke access."),
         Toggle({ label: "Connect radar", value: draft.enabled, onChange: (value) => { draft.enabled = value === true; } }),
         TextInput({ label: "REM server port", value: draft.port, onChange: (value) => { draft.port = value; } }),
         TextInput({ label: "Radar pairing code", value: "", placeholder: draft.token ? "Paired code saved; leave blank to keep" : "Paste code from REM", onChange: (value) => { if (value.trim()) draft.token = value.trim(); } }),

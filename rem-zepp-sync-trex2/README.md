@@ -1,6 +1,6 @@
 # REM Sync mini app for Amazfit T-Rex 2
 
-REM Sync 0.1.31 opens a native read-only radar app on the T-Rex 2. The radar fills the 454 x 454 round display. It retains the Zepp Side Service and operational-status page. The app is separate from the REM Tactical watch face. REM Tactical 1.3.29 launches this app when its central compass is tapped.
+REM Sync 0.1.32 opens a native read-only radar app on the T-Rex 2. The radar fills the 454 x 454 round display. It retains the Zepp Side Service and operational-status page. The app is separate from the REM Tactical watch face. REM Tactical 1.3.29 launches this app when its central compass is tapped.
 
 The radar implements the source-to-watch software path for [issue #2](https://github.com/FreeTAKTeam/rem-tactical-trex2/issues/2); firmware acceptance remains open. It starts without cached contacts and requests the paired phone source. The radar uses color and symbols: a grey center arrow/cone means disconnected; amber means stale source or unverified heading/clock. Contact fills retain REM colors. Cardinal letters and range scales are the only radar text.
 
@@ -33,11 +33,13 @@ Configure `common/remConfig.js` before testing the existing status path. The def
 
 ## Radar pairing and data path
 
-1. Build/install REM's Watch Status plugin 1.1.3 with the actual REM host signer configured. In REM, trust the plugin and explicitly grant `operationalRead`, `mapObserverRead`, and `mapNearbyRead` (plugin API 1.3).
+1. Build/install REM's Watch Status plugin 1.1.4 or later with the actual REM host signer configured. In REM, trust the plugin and explicitly grant `operationalRead`, `mapObserverRead`, and `mapNearbyRead` (plugin API 1.3).
 2. In its configuration, enable the server and **Allow radar access on this phone**, then save. Copy the scoped radar pairing code.
 3. In Zepp's REM Sync settings, enable **Connect radar**, enter the same server port (default 29863), paste the code and save. Open the watch app, or open Connection with SELECT, press SELECT again for actions and select Reconnect.
 
-The code stays in Zepp phone settings; watch requests cannot choose a URL or credential. The Side Service uses only `http://127.0.0.1:<port>/northbound/watch/radar`. The read session expires after eight hours and is revoked by disable, settings save, renewal or REM plugin restart. Renew/paste a new code after expiry. Authentication/configuration denial clears contacts and stops automatic retries; reconnect explicitly after repairing access. Temporary transport loss retains aged contacts.
+Pair once: the code stays in Zepp phone settings and private Watch Status storage, does not expire, and survives REM, Zepp and phone restarts. Normal settings saves and server pauses retain it. REM Sync automatically accepts a fresh authenticated source session and rediscovers a changed Bluetooth service port after a request timeout, without reopening the watch app. Recovery starts once REM and Zepp are running again. Watch requests cannot choose a URL or credential; the Side Service uses only `http://127.0.0.1:<port>/northbound/watch/radar`.
+
+Use **Forget pairing** or disable radar access in REM to revoke the saved pairing. **Replace pairing code**, permission denial or clearing plugin/Zepp data also requires pairing again. Authentication/configuration denial clears contacts and stops retries; reconnect explicitly after repairing access. Temporary transport loss retains visibly aged contacts. Upgrading from Watch Status 1.1.3 needs one final pairing because it never saved its code; subsequent restarts retain the new code. See the [persistent pairing plan and evidence](../docs/goals/persistent-radar-pairing/PLAN.md).
 
 The source uses REM's own local position and nearby map pins, with observer checks before and after the read. The plugin preserves the canonical NATO symbols: friendly blue `#007aff`, hostile red `#ff303b`, neutral green `#00d43b`, and unknown yellow `#ffe600`. Generic and unrecognized symbols keep REM's `#64beff`; names and arbitrary icon text never imply affiliation. Source position accuracy remains numeric or unknown and is shown in contact/Connection details. Source marker timestamps remain distinct from receipt time. No coordinates, notes or bearer tokens are sent to the watch. Snapshots are best effort because the host has no atomic combined observer/nearby operation.
 
