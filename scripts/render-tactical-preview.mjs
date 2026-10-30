@@ -51,7 +51,7 @@ async function render(widgets, name, level = 1) {
         return (await sharp(data).metadata()).width;
       }));
       let x = p.x;
-      if (p.align_h === "CENTER_H") x += Math.max(0, (p.w - widths.reduce((sum, width) => sum + width, 0)) / 2);
+      if (p.align_h === "CENTER_H" && Number.isFinite(p.w)) x += Math.max(0, (p.w - widths.reduce((sum, width) => sum + width, 0)) / 2);
       for (const [index, src] of parts.entries()) x += await img(src, x, p.y, widths[index]);
     } else if (type === "IMG_LEVEL") {
       await img(p.image_array[7], p.x, p.y, p.w, p.h);

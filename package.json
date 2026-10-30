@@ -15,6 +15,7 @@
     "radar:assets": "node scripts/generate-radar-assets.mjs",
     "radar:preview": "node scripts/serve-radar-preview.mjs",
     "radar:render": "node scripts/render-radar-preview.mjs",
+    "release": "node scripts/build-release.mjs",
     "test": "node --test test"
   },
   "devDependencies": {
